@@ -5,10 +5,14 @@
   "description": "DSH 桌面壳：把 DeepSeek Harness Web GUI 包装为 Windows 桌面应用",
   "type": "module",
   "scripts": {
+    "setup": "node scripts/setup-gnu-linker.mjs",
     "tauri": "tauri",
-    "dev": "tauri dev",
-    "build": "tauri build",
-    "icon": "tauri icon"
+    "dev": "npm run setup && tauri dev",
+    "build": "npm run setup && tauri build",
+    "icon": "tauri icon",
+    "check:frontend": "node scripts/check-frontend.mjs",
+    "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "check": "npm run setup && npm run check:rust && npm run check:frontend"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

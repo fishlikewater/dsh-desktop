@@ -140,7 +140,7 @@ fn watch_settings_theme(app: &tauri::AppHandle) {
     }) else {
         return;
     };
-    let Ok(_) = watcher.watch(&dir, RecursiveMode::NonRecursive) else {
+    let Ok(_) = watcher.watch(dir, RecursiveMode::NonRecursive) else {
         return;
     };
     // 事件回调运行在 notify 独立线程，app 克隆可跨线程使用
@@ -200,7 +200,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 }
             }
             "notify" => {
-                let _ = notify(
+                notify(
                     app.clone(),
                     "DSH Desktop".to_string(),
                     "通知通道工作正常 ✓".to_string(),
@@ -281,7 +281,7 @@ fn disable_window_rounding(window: &tauri::WebviewWindow) {
         if module == 0 {
             return;
         }
-        let proc = GetProcAddress(module, b"DwmSetWindowAttribute\0".as_ptr() as *const u8);
+        let proc = GetProcAddress(module, c"DwmSetWindowAttribute".as_ptr().cast::<u8>());
         if proc == 0 {
             return;
         }
@@ -330,7 +330,7 @@ unsafe fn set_window_pos(hwnd: isize, x: i32, y: i32) {
 unsafe fn work_area_ffi() -> (i32, i32, i32, i32) {
     const SPI_GETWORKAREA: u32 = 0x0030;
     #[repr(C)]
-    struct RECT {
+    struct Rect {
         left: i32,
         top: i32,
         right: i32,
@@ -345,11 +345,11 @@ unsafe fn work_area_ffi() -> (i32, i32, i32, i32) {
             f_win_ini: u32,
         ) -> i32;
     }
-    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect = Rect { left: 0, top: 0, right: 0, bottom: 0 };
     SystemParametersInfoW(
         SPI_GETWORKAREA,
         0,
-        &mut rect as *mut RECT as *mut std::ffi::c_void,
+        &mut rect as *mut Rect as *mut std::ffi::c_void,
         0,
     );
     (

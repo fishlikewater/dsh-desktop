@@ -18,6 +18,8 @@ logs/
 .toolchain-test/
 .dsh-vision-toolkit/
 ScreenShot_*.png
+# 由 scripts/setup-gnu-linker.mjs 按本机环境生成
+.cargo/config.toml
 
 # ===== cowork-flow 运行时状态（流程代码/文档/tasks 入库）=====
 .cowork-flow/.runtime/

@@ -1,6 +1,0 @@
-# 使用 rustup GNU 工具链自带的 MinGW-w64 14.1.0 链接器（self-contained 组件）。
-# 背景：系统 PATH 中的 gcc 8.1.0（binutils 2.30，2018 年）与新版 rustc 生成的
-# COFF 对象格式不兼容，链接出的 EXE 无法启动（os error 193）。
-# 若升级/更换 rustup 工具链，请同步更新此绝对路径。
-[target.x86_64-pc-windows-gnu]
-linker = "C:\\Users\\Administrator\\.rustup\\toolchains\\stable-x86_64-pc-windows-gnu\\lib\\rustlib\\x86_64-pc-windows-gnu\\bin\\self-contained\\x86_64-w64-mingw32-gcc.exe"
