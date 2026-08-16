@@ -74,31 +74,8 @@ pub fn create_main_window(
     // 实测某些组合下 tao 会以默认尺寸创建窗口）。
     let _ = window.set_size(PhysicalSize::new(init_w, init_h));
     log::info!(target: "window", "主窗口创建完成 {init_w}x{init_h}（工作区 {wa_w}x{wa_h}）");
-    // 窗口显示后居中：隐藏窗口上 set_position 无效，壳页 show() 时机不定，
-    // 用固定延迟尝试（窗口通常 1.5s 内显示；5s 兜底场景由第二次尝试覆盖）。
-    {
-        let win = window.clone();
-        std::thread::spawn(move || {
-            for delay in [2500u64, 6500] {
-                std::thread::sleep(std::time::Duration::from_millis(delay));
-                let Ok(hwnd) = win.hwnd() else { continue };
-                if !unsafe { is_window_visible(hwnd.0 as isize) } {
-                    continue;
-                }
-                if let Ok(Some(monitor)) = win.current_monitor() {
-                    let wa = monitor.work_area();
-                    if let Ok(size) = win.outer_size() {
-                        let x = wa.position.x
-                            + (wa.size.width as i32 - size.width as i32) / 2;
-                        let y = wa.position.y
-                            + (wa.size.height as i32 - size.height as i32) / 2;
-                        unsafe { set_window_pos(hwnd.0 as isize, x.max(0), y.max(0)) };
-                    }
-                }
-                break;
-            }
-        });
-    }
+    // 窗口居中由壳页事件驱动：iframe 加载完成 → 壳页 show() 回调后立即居中
+    // （见 frontend-dist/index.html showWindow），不再使用固定延迟睡眠线程。
 
     // 窗口初始隐藏：壳页 iframe 加载完成后由壳页调用 show()，
     // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色）。
@@ -171,36 +148,6 @@ fn disable_window_rounding(window: &WebviewWindow) {
         let transparent = 0x0000_0000u32;
         func(hwnd.0 as isize, DWMWA_BORDER_COLOR, &transparent, 4);
     }
-}
-
-/// 查询窗口是否可见（Windows）
-#[cfg(target_os = "windows")]
-unsafe fn is_window_visible(hwnd: isize) -> bool {
-    #[link(name = "user32")]
-    extern "system" {
-        fn IsWindowVisible(hwnd: isize) -> i32;
-    }
-    IsWindowVisible(hwnd) != 0
-}
-
-/// 移动窗口（直接 Win32 SetWindowPos，绕过 tauri set_position 的异步时序问题）
-#[cfg(target_os = "windows")]
-unsafe fn set_window_pos(hwnd: isize, x: i32, y: i32) {
-    const SWP_NOSIZE: u32 = 0x0001;
-    const SWP_NOZORDER: u32 = 0x0004;
-    #[link(name = "user32")]
-    extern "system" {
-        fn SetWindowPos(
-            hwnd: isize,
-            insert_after: isize,
-            x: i32,
-            y: i32,
-            cx: i32,
-            cy: i32,
-            flags: u32,
-        ) -> i32;
-    }
-    SetWindowPos(hwnd, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
 }
 
 /// 主显示器工作区（x, y, width, height，物理像素，排除任务栏）。

@@ -1,0 +1,2 @@
+{"file": "src-tauri/src/window.rs", "reason": "移除居中睡眠线程（2500/6500ms），居中交由壳页事件驱动"}
+{"file": "frontend-dist/index.html", "reason": "showWindow 居中从固定 120ms 改为 show 完成回调后立即执行"}

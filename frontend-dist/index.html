@@ -281,7 +281,8 @@
 
       // 显示窗口：窗口以 visible(false) 创建，等待内容就绪后再显示，
       // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色）。
-      // 显示后立即居中（隐藏窗口上 setPosition 无效，可见后才生效）。
+      // 显示完成后立即居中（事件驱动：不再固定等待 120ms；隐藏窗口上
+      // setPosition 无效，show 完成后窗口已可见）。
       let centered = false;
       function showWindow() {
         try {
@@ -298,7 +299,7 @@
                     new window.__TAURI__.window.PhysicalPosition(Math.max(0, x), Math.max(0, y))
                   );
                 } catch (e) {}
-              }, 120);
+              }, 0);
             }
           });
         } catch (e) {}
