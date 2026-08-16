@@ -122,6 +122,7 @@ dsh-desktop/
 
 - 壳页与远程 GUI 隔离：iframe 无 Tauri 权限
 - capabilities 最小权限声明
+- **CSP**：壳页启用内容安全策略（内联脚本 sha256 白名单；iframe/连接仅允许 `http://127.0.0.1:*` 与 `http://localhost:*`）。自定义 `DSH_URL` 指向其他主机时，需同步扩展 `src-tauri/tauri.conf.json` 的 `security.csp`（`frame-src`/`connect-src`）
 - 安全说明与漏洞报告见 [SECURITY.md](SECURITY.md)
 
 ## 路线图

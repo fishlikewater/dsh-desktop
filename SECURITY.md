@@ -25,7 +25,10 @@
 - **能力最小化**：`capabilities/default.json` 仅声明窗口控制所需权限
 - **数据位置**：用户数据位于 `~/.dsh`（DSH_HOME）；壳层配置/日志位于 `%APPDATA%\com.dsh.desktop`
 - **主题解析**：`settings.yaml` 解析仅读取 `ui-theme.preference`，损坏/未知内容回退默认值，不执行任何内容
-- **CSP**：壳页启用 CSP（见 `tauri.conf.json`），限制脚本与连接来源
+- **CSP**：壳页启用 CSP（`src-tauri/tauri.conf.json` `security.csp`）：
+  - `script-src`：内联脚本 sha256 白名单（修改 `frontend-dist/index.html` 内联 JS 后须同步更新 hash）
+  - `frame-src`/`connect-src`：仅 `http://127.0.0.1:*` 与 `http://localhost:*`（DSH GUI 嵌入与服务探测）；`DSH_URL` 指向其他主机时需同步扩展
+  - `style-src`：允许内联样式（壳页 `<style>`，无动态注入面）
 
 ## 已知限制
 
