@@ -2,6 +2,21 @@
 
 本文档定义从代码到发布物的完整发版清单与核验步骤。
 
+## 分支与标签规范
+
+- 主干：`main`（所有发版均从 main 出；日常开发直接提交 main，无需长期分支）
+- 标签：每次发版打 `v<version>`（如 `v0.1.0`），指向发版 commit
+- 版本一致性：发版前 `npm run check` 强制校验 tauri.conf.json / Cargo.toml /
+  CHANGELOG.md 最新版本三者一致（scripts/check-version.mjs）
+- 变更记录：CHANGELOG.md 遵循 Keep a Changelog；Unreleased 段落随任务推进更新，
+  发版时转为版本段落
+
+```bash
+# 发版收尾（示例）
+git tag v0.1.1
+git push origin main --tags
+```
+
 ## 发版清单
 
 ```bash

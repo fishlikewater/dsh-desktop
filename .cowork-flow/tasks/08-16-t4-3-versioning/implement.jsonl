@@ -1,0 +1,3 @@
+{"file": "scripts/check-version.mjs", "reason": "版本一致性检查（conf/Cargo/CHANGELOG）", "type": "planned-file"}
+{"file": "package.json", "reason": "check 接入版本一致性检查"}
+{"file": "docs/release-process.md", "reason": "分支/标签规范补充"}
