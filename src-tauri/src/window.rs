@@ -27,20 +27,29 @@ pub fn work_area(window: tauri::WebviewWindow) -> Option<(i32, i32, i32, i32)> {
     ))
 }
 
+/// 计算初始/最小窗口尺寸（纯函数，无 FFI 依赖，便于单测）：
+/// 初始尺寸保持 1280x840（"原来的大小"），小桌面（如手机 RDP 远程，工作区
+/// 可能只有 640x480）时贴近屏幕，避免窗口比桌面还大、显示缩得很小；
+/// 最小尺寸同样受工作区裁剪。
+/// 返回 (init_w, init_h, min_w, min_h)。
+fn initial_window_size(wa_w: u32, wa_h: u32) -> (u32, u32, u32, u32) {
+    let init_w = INITIAL_WINDOW_SIZE.0.min(wa_w.max(1));
+    let init_h = INITIAL_WINDOW_SIZE.1.min(wa_h.max(1));
+    let min_w = MIN_WINDOW_SIZE.0.min(wa_w.max(1));
+    let min_h = MIN_WINDOW_SIZE.1.min(wa_h.max(1));
+    (init_w, init_h, min_w, min_h)
+}
+
 /// 创建主窗口：无边框、透明、Mica 毛玻璃、样式守卫、居中与初始隐藏。
 /// 返回窗口句柄；调用方负责后续初始化（托盘、快捷键、主题监听）。
 pub fn create_main_window(
     app: &tauri::AppHandle,
     initial_url: WebviewUrl,
 ) -> tauri::Result<WebviewWindow> {
-    // 初始尺寸自适应：大桌面保持 1280x840（"原来的大小"），
-    // 小桌面（如手机 RDP 远程，工作区可能只有 640x480）让窗口贴近屏幕，
-    // 避免窗口比桌面还大、显示缩得很小。
+    // 初始尺寸自适应：大桌面保持 1280x840，小桌面贴近屏幕
     let (_wa_x, _wa_y, wa_w, wa_h) = unsafe { work_area_ffi() };
-    let init_w = INITIAL_WINDOW_SIZE.0.min(wa_w.max(0) as u32);
-    let init_h = INITIAL_WINDOW_SIZE.1.min(wa_h.max(0) as u32);
-    let min_w = MIN_WINDOW_SIZE.0.min(wa_w.max(0) as u32);
-    let min_h = MIN_WINDOW_SIZE.1.min(wa_h.max(0) as u32);
+    let (init_w, init_h, min_w, min_h) =
+        initial_window_size(wa_w.max(0) as u32, wa_h.max(0) as u32);
 
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW, initial_url)
         .title("DSH Desktop")
@@ -291,3 +300,40 @@ mod style_guard {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{initial_window_size, INITIAL_WINDOW_SIZE, MIN_WINDOW_SIZE};
+
+    #[test]
+    fn large_desktop_keeps_design_size() {
+        // 大桌面：初始 1280x840，最小 860x620 原样保留
+        assert_eq!(initial_window_size(1920, 1080), (1280, 840, 860, 620));
+    }
+
+    #[test]
+    fn tiny_desktop_clamps_to_work_area() {
+        // 小桌面（如手机 RDP，工作区 640x480）：初始/最小都贴近工作区
+        assert_eq!(initial_window_size(640, 480), (640, 480, 640, 480));
+    }
+
+    #[test]
+    fn medium_desktop_clamps_min_only() {
+        // 中等桌面（如 1024x768）：初始完整，最小被裁剪到工作区
+        assert_eq!(initial_window_size(1024, 700), (1024, 700, 860, 620));
+    }
+
+    #[test]
+    fn zero_work_area_falls_back_to_minimum() {
+        // 工作区异常（0x0）：至少保持 1x1 的窗口存在
+        assert_eq!(initial_window_size(0, 0), (1, 1, 1, 1));
+    }
+
+    #[test]
+    fn design_size_constants_are_sane() {
+        // 设计不变量：初始尺寸 ≥ 最小尺寸
+        assert!(INITIAL_WINDOW_SIZE.0 >= MIN_WINDOW_SIZE.0);
+        assert!(INITIAL_WINDOW_SIZE.1 >= MIN_WINDOW_SIZE.1);
+    }
+}
+

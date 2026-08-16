@@ -1,0 +1,1 @@
+{"file": "src-tauri/src/window.rs", "reason": "窗口尺寸计算提取纯函数 initial_window_size + 单测"}
