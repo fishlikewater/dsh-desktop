@@ -460,15 +460,22 @@
       window.addEventListener("resize", syncMax);
       syncMax();
 
-      // ===== 服务检测（每 2 秒；在线则加载 iframe，离线则显示覆盖层）=====
+      // ===== 服务检测（在线 10s / 离线 2s 自适应轮询；在线则加载 iframe，
+      // 离线则显示覆盖层；iframe 15s 无响应提示重试）=====
       const frame = document.getElementById("dsh-frame");
       const overlay = document.getElementById("overlay");
       const statusText = document.getElementById("status-text");
       const errEl = document.getElementById("err");
       let frameLoaded = false;
+      let loadedOk = false;
+      let loadTimer = null;
 
       // GUI 加载完成（iframe load）后显示窗口，避免启动闪色
-      frame.addEventListener("load", showWindow);
+      frame.addEventListener("load", function () {
+        loadedOk = true;
+        if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
+        showWindow();
+      });
 
       async function check() {
         // no-cors：只关心可达性（网络错误 reject，任何 HTTP 响应都算可达）
@@ -482,19 +489,35 @@
           overlay.classList.remove("show");
           if (!frameLoaded) {
             frameLoaded = true;
+            loadedOk = false;
             frame.src = DSH_URL;
+            // 页面加载黑洞（如服务挂起不响应）→ 15s 后提示重试
+            loadTimer = setTimeout(function () {
+              if (!loadedOk) {
+                statusText.textContent = "页面加载超时";
+                errEl.textContent = "服务可达但页面 15s 未加载，请点击重试";
+                showWindow();
+                overlay.classList.add("show");
+              }
+            }, 15000);
           }
+          setTimeout(tick, 10000); // 在线：放宽轮询省资源
         } else {
           // 服务不可用：直接显示（提示页本身即完整内容，无需等待）
           showWindow();
           overlay.classList.add("show");
           errEl.textContent = "尚未检测到服务（" + new Date().toLocaleTimeString() + "）";
+          setTimeout(tick, 2000);
         }
-        setTimeout(tick, 2000);
       }
       document.getElementById("retry").addEventListener("click", function () {
         errEl.textContent = "";
         statusText.textContent = "正在检测服务…";
+        // 允许重新加载 iframe（服务恢复或页面加载失败后的重试）
+        frameLoaded = false;
+        loadedOk = false;
+        if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
+        frame.src = "about:blank";
         tick();
       });
 
