@@ -1,6 +1,10 @@
 # DSH Desktop
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 把 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的 Web GUI（默认 `http://127.0.0.1:3080`）包装为 Windows 桌面应用的 Tauri 壳层。
+
+> 项目处于活跃开发阶段（v0.1.x）。生产级改造计划见 [docs/production-hardening-plan.md](docs/production-hardening-plan.md)，任务分解见 [docs/development-plan.md](docs/development-plan.md)。
 
 ## 功能
 
@@ -12,11 +16,24 @@
 - **关闭最小化**：点窗口关闭按钮时隐藏到托盘，应用常驻后台
 - **系统通知**：通过 `tauri-plugin-notification` 提供（`notify` command + 托盘测试项）
 - **服务不可用提示页**：DSH 未启动时显示友好覆盖层并轮询检测，服务恢复后自动加载 GUI
-- **定时任务**：已迁移为 DSH 插件 **@fishlikewater/dsh-tasks**（源码在 `E:\Projects\IdeaProjects\person\dash-plugin`，symlink 安装到 `~/.dsh/profiles/web/node_modules/`，profile patch 声明）。壳层不再包含任何任务逻辑与入口：入口在 DSH GUI 侧边栏底部（闹钟图标，`sidebar.footer.action` slot）。插件能力：每天/工作日/每周/间隔四种计划；触发动作——系统通知（Web 通知 + 面板内未读提示）或执行 DSH 任务（进程内 agent 会话，默认模型、可指定工作区，会话出现在 GUI 历史）；任务持久化于 `~/.dsh/settings.yaml`（`dsh-tasks` 命名空间），1s tick 调度（±30s 触发窗口）；HTTP API `/_dsh/dsh-tasks/*`。旧壳层数据 `%APPDATA%\com.dsh.desktop\tasks.json` 不再读取（如需迁移可手动重建）
 - **标题栏跟随主题**：自定义标题栏与覆盖层配色跟随 DSH GUI 外观设置（`~/.dsh/settings.yaml` 的 `ui-theme.preference`：light/dark/system；Rust 侧 notify 监听该文件，变化时推送 `theme-file-changed` 事件即时同步，30s 轮询仅作兜底，system 模式跟随系统 prefers-color-scheme）
 - **可配置服务地址**：环境变量 `DSH_URL` 覆盖默认 `http://127.0.0.1:3080`（不同端口或测试用）
 - **文件拖拽 / 剪贴板图片粘贴**：`drag_and_drop(false)` 放行拖拽事件给页面，由 DSH GUI 原生处理（已通过 CDP 拖放模拟验证，含 iframe 场景）
 - **启动无闪烁**：窗口以 `visible(false)` + 显式 `hide()` 创建，壳页 iframe 加载完成后才显示（任务栏图标只出现一次，无暗色背景闪烁）
+
+## 安装
+
+### 前置要求
+
+- **Windows 10/11**（WebView2 运行时，一般系统自带）
+- **Node.js ≥ 18** 与 **Rust 工具链**（构建需要；运行时仅需已安装的 DSH CLI）
+- **运行中的 DSH 服务**：`dsh` 命令启动（默认监听 3080 端口）；安装与使用见 [DeepSeek Harness](https://github.com/deepseek-ai/dsh)
+
+### 从安装包安装
+
+从发布页下载 NSIS 安装包（`.exe`），运行安装后从开始菜单/桌面快捷方式启动。
+
+> 说明：当前发布版**未做代码签名**，Windows SmartScreen 可能提示"未知发布者"——选择"更多信息 → 仍要运行"即可；请从官方发布渠道获取安装包并核对 SHA256 校验和（见发布说明）。
 
 ## 开发
 
@@ -27,13 +44,16 @@ npm install
 # 开发模式：编译并弹出桌面窗口
 npm run dev
 
+# 代码检查（clippy + 前端脚本语法）
+npm run check
+
 # 生成安装包（NSIS）
 npm run build
 ```
 
 要求：
 
-- Rust（MSVC 工具链为官方支持；本项目亦验证了 windows-gnu 工具链）
+- Rust（windows-gnu 或 MSVC 工具链均可；`stable-x86_64-pc-windows-gnu` 已验证）
 - Node.js ≥ 18
 - Windows 10/11（WebView2 运行时，一般系统自带）
 - 运行中的 DSH 服务（`dsh` 命令启动，监听 3080 端口）
@@ -45,6 +65,7 @@ dsh-desktop/
 ├── package.json              # npm 侧：Tauri CLI
 ├── frontend-dist/
 │   └── index.html            # 本地壳页：自定义标题栏 + iframe 嵌入 DSH GUI + 服务检测覆盖层
+├── scripts/                  # 开发/验证脚本（前端检查、CDP 冒烟）
 └── src-tauri/
     ├── tauri.conf.json       # 窗口/托盘/打包配置（withGlobalTauri）
     ├── Cargo.toml            # Rust 依赖
@@ -86,6 +107,23 @@ dsh-desktop/
   透明-暗色闪烁）；应用图标为 DSH 鲸鱼 logo（浅灰圆角底 + 黑色鲸鱼，`src-tauri/icons/app-icon.svg`）
 - Codex 功能对照评估见 [docs/codex-features-evaluation.md](docs/codex-features-evaluation.md)
 
+## 故障排查
+
+| 现象 | 处理 |
+|---|---|
+| 窗口显示"DSH 服务未运行" | 确认 `dsh` 服务已启动（`dsh --profile web`）；或设置 `DSH_URL` 指向实际地址后重启应用 |
+| 标题栏主题不跟随 | 检查 `~/.dsh/settings.yaml` 的 `ui-theme.preference` 值（light/dark/system）；应用日志（见下文）确认 watcher 状态 |
+| 全局快捷键无效 | 快捷键可能被其他应用占用；查看启动日志中的注册失败告警 |
+| 安装包被 SmartScreen 拦截 | 未签名发布版的已知限制，见 [SECURITY.md](SECURITY.md) |
+
+日志位置：`%APPDATA%\com.dsh.desktop\logs\`（开发中版本暂以调试输出为主，详见 CHANGELOG）。
+
+## 安全
+
+- 壳页与远程 GUI 隔离：iframe 无 Tauri 权限
+- capabilities 最小权限声明
+- 安全说明与漏洞报告见 [SECURITY.md](SECURITY.md)
+
 ## 路线图
 
 - [x] 壳层 MVP：窗口 + 托盘 + 全局快捷键 + 关闭最小化
@@ -96,5 +134,10 @@ dsh-desktop/
 - [x] 原生窗口质感（无边框 + 自定义标题栏 + Mica/Acrylic 毛玻璃 + 伪最大化）
 - [x] 无边框线/无缝隙（DWM 直角 + WS_POPUP 样式 + 关闭阴影偏移 + 自绘 resize）
 - [x] 单实例（防快捷键冲突）+ 无控制台窗口
+- [ ] 生产级改造（见 [docs/development-plan.md](docs/development-plan.md)）：规范门禁、测试与 CI、安全加固、自动更新、服务托管
 - [ ] 安装包签名
 - [ ] 多会话窗口 / 独立小窗模式
+
+## 许可
+
+[MIT](LICENSE) © 2026 zhangxiang

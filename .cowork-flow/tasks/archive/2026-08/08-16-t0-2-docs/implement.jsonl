@@ -1,0 +1,4 @@
+{"file": "LICENSE", "reason": "MIT 开源许可证", "type": "planned-file"}
+{"file": "CHANGELOG.md", "reason": "版本变更记录（Keep a Changelog）", "type": "planned-file"}
+{"file": "SECURITY.md", "reason": "安全报告渠道与说明", "type": "planned-file"}
+{"file": "README.md", "reason": "重构：移除机器绝对路径，补齐安装/构建/发布/故障排查/安全章节"}
