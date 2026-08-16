@@ -62,10 +62,6 @@ pub fn create_main_window(
         .shadow(false)
         // 透明背景：配合 Mica/Acrylic 毛玻璃效果
         .transparent(true)
-        // 关键配置：让 WebView2 把拖拽事件放行给页面。
-        // DSH GUI 自带 document 级 drop 监听（intakeImages），
-        // 若开启 Tauri 默认的窗口级拖拽拦截，页面收不到文件。
-        .drag_and_drop(false)
         // 禁用系统最大化：无边框窗口的系统最大化会被 DWM 扩展到 -8px 偏移
         // （标题栏顶部被裁）。最大化改由壳页伪最大化实现（手动贴齐工作区）。
         .maximizable(false)
@@ -74,6 +70,13 @@ pub fn create_main_window(
         // 同时避免任务栏图标"出现-消失-再出现"的闪烁。
         // 用显式 hide() 兜底：实测 visible(false) 在透明窗口上可能不生效。
         .visible(false);
+    // 关键配置：让 WebView 把拖拽事件放行给页面。
+    // DSH GUI 自带 document 级 drop 监听（intakeImages），
+    // 若开启 Tauri 默认的窗口级拖拽拦截，页面收不到文件。
+    // macOS 不暴露 drag_and_drop（tauri 平台 API 差异），其默认行为
+    // 即页面级拖放处理，无需设置。
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.drag_and_drop(false);
     // 仅调试构建开启 CDP 端口（自动化验证用；发布版不带）
     #[cfg(debug_assertions)]
     let builder = builder.additional_browser_args("--remote-debugging-port=9226");
