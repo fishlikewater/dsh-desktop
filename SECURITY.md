@@ -22,6 +22,8 @@
 ## 安全设计说明
 
 - **隔离边界**：远程 DSH GUI 以 iframe 嵌入，无 Tauri IPC 权限；壳页本地页面独占 `__TAURI__` 能力
+  - `__TAURI__` 对象因 WebView2 注入机制会出现在 iframe 文档中（对象层），但 capabilities 的权限按 **URL 粒度**匹配（`URL: local` 仅匹配壳页本地文档）：实测 iframe 内 `outerSize`、`invoke` 等全部 IPC 调用被拒（"not allowed on ... URL: http://127.0.0.1:3080/"）——隔离边界在能力层成立
+  - 壳页能力面由 capabilities 收敛（6 项窗口写权限 + core:default）+ CSP 脚本 sha256 白名单（无 eval/动态脚本）双重约束；即便壳页被注入，也不具备文件/命令/网络能力
 - **能力最小化**：`capabilities/default.json` 仅声明窗口控制所需权限
 - **数据位置**：用户数据位于 `~/.dsh`（DSH_HOME）；壳层配置/日志位于 `%APPDATA%\com.dsh.desktop`
 - **主题解析**：`settings.yaml` 解析仅读取 `ui-theme.preference`，损坏/未知内容回退默认值，不执行任何内容
