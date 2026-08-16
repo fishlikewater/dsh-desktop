@@ -3,14 +3,14 @@
   "name": "08-16-t2-1-csp",
   "title": "T2.1 CSP 落地",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
   "creator": "zhangxiang",
   "assignee": "main",
   "createdAt": "2026-08-16",
-  "completedAt": null,
+  "completedAt": "2026-08-16",
   "commit": null,
   "subtasks": [],
   "children": [],
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-01d7d63ebde5e73a"
+    "revision": 5,
+    "operation_id": "task-save-d8180c24bf88471a8dd47c1614c8186c"
   }
 }
