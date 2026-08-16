@@ -3,14 +3,14 @@
   "name": "08-16-t6-1-perf",
   "title": "T6.1 性能与资源优化",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
   "creator": "zhangxiang",
   "assignee": "main",
   "createdAt": "2026-08-16",
-  "completedAt": null,
+  "completedAt": "2026-08-16",
   "commit": null,
   "subtasks": [],
   "children": [],
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-6fffddfad238bfbf"
+    "revision": 5,
+    "operation_id": "task-save-8bcd950bbd744f02bd2adfb0dcf63f69"
   }
 }
