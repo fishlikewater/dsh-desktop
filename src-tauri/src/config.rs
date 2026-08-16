@@ -138,6 +138,23 @@ fn resolve_dsh_home(
         .unwrap_or_else(|| ".".into())
 }
 
+/// 把服务地址编码为壳页 query 参数值（与 JS URLSearchParams.get 解码对称）：
+/// 除 unreserved 字符（A-Z a-z 0-9 - _ . ~）外全部 percent-encode，
+/// 非 ASCII 字符按 UTF-8 字节逐字节编码（Url 规范化后基本是 ASCII，防御性处理）。
+/// 手写编码的动机：必须编码 #（防 fragment 截断）与 +（防被解码为空格）。
+pub fn encode_query_param(url: &Url) -> String {
+    url.as_str()
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
 /// DSH 外观主题持久化文件路径：$DSH_HOME/settings.yaml
 /// （DSH_HOME 解析优先级：环境变量 > config.json dsh_home > USERPROFILE）。
 pub fn theme_settings_path() -> PathBuf {
@@ -218,5 +235,66 @@ mod tests {
         assert_eq!(resolve_dsh_home(None, Some("cfg"), Some("up")), "cfg");
         assert_eq!(resolve_dsh_home(None, None, Some("up")), "up");
         assert_eq!(resolve_dsh_home(None, None, None), ".");
+    }
+
+    #[test]
+    fn encode_query_param_encodes_reserved_chars() {
+        // # 不编码会截断 fragment；? & = % 会让 query 结构错乱；: / 必须编码
+        let url = Url::parse("http://127.0.0.1:3080/#/chat?a=1&b=2%20c").unwrap();
+        let encoded = encode_query_param(&url);
+        assert!(!encoded.contains('#'));
+        assert!(encoded.contains("%23"), "{encoded}");
+        assert!(encoded.contains("%3F"), "{encoded}");
+        assert!(encoded.contains("%26"), "{encoded}");
+        assert!(encoded.contains("%3D"), "{encoded}");
+        assert!(encoded.contains("%25"), "{encoded}");
+        assert!(encoded.contains("%3A"), "{encoded}");
+        assert!(encoded.contains("%2F"), "{encoded}");
+    }
+
+    #[test]
+    fn encode_query_param_encodes_plus() {
+        // + 在 query 中会被 URLSearchParams 解码为空格，必须编码为 %2B
+        let url = Url::parse("http://127.0.0.1:3080/a+b").unwrap();
+        let encoded = encode_query_param(&url);
+        assert!(encoded.contains("%2B"), "{encoded}");
+        assert!(!encoded.contains("a+b"));
+    }
+
+    #[test]
+    fn encode_query_param_keeps_unreserved() {
+        let url = Url::parse("http://127.0.0.1:3080/ab-1_2.3~z").unwrap();
+        let encoded = encode_query_param(&url);
+        assert!(encoded.contains("ab-1_2.3~z"), "{encoded}");
+    }
+
+    #[test]
+    fn encode_query_param_round_trips_with_url_search_params_semantics() {
+        // 模拟 JS 侧 URLSearchParams.get("dsh") 的解码语义：
+        // 编码值解码后必须还原原 URL 字符串（% + # 等全部往返无损）
+        let url = Url::parse("http://127.0.0.1:3080/#/a+b?x=1").unwrap();
+        let encoded = encode_query_param(&url);
+        let decoded = percent_decode(&encoded);
+        assert_eq!(decoded, url.as_str());
+    }
+
+    /// 测试用最小 percent 解码（模拟 URLSearchParams.get 语义）
+    fn percent_decode(s: &str) -> String {
+        let bytes = s.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' && i + 2 < bytes.len() {
+                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("");
+                if let Ok(b) = u8::from_str_radix(hex, 16) {
+                    out.push(b);
+                    i += 3;
+                    continue;
+                }
+            }
+            out.push(bytes[i]);
+            i += 1;
+        }
+        String::from_utf8_lossy(&out).into_owned()
     }
 }

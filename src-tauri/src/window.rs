@@ -17,6 +17,7 @@ pub fn show_main_window(app: &tauri::AppHandle) {
 /// 壳页伪最大化用它把窗口贴齐工作区：最大化时不覆盖任务栏。
 #[tauri::command]
 pub fn work_area(window: tauri::WebviewWindow) -> Option<(i32, i32, i32, i32)> {
+    // clippy question_mark lint 推荐的惯用形式：ok()? 解 Result 后 ? 解 Option
     let monitor = window.current_monitor().ok()??;
     let wa = monitor.work_area();
     Some((
@@ -47,9 +48,8 @@ pub fn create_main_window(
     initial_url: WebviewUrl,
 ) -> tauri::Result<WebviewWindow> {
     // 初始尺寸自适应：大桌面保持 1280x840，小桌面贴近屏幕
-    let (_wa_x, _wa_y, wa_w, wa_h) = unsafe { work_area_ffi() };
-    let (init_w, init_h, min_w, min_h) =
-        initial_window_size(wa_w.max(0) as u32, wa_h.max(0) as u32);
+    let (wa_w, wa_h) = primary_work_area(app);
+    let (init_w, init_h, min_w, min_h) = initial_window_size(wa_w, wa_h);
 
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW, initial_url)
         .title("DSH Desktop")
@@ -86,23 +86,23 @@ pub fn create_main_window(
     // 窗口居中由壳页事件驱动：iframe 加载完成 → 壳页 show() 回调后立即居中
     // （见 frontend-dist/index.html showWindow），不再使用固定延迟睡眠线程。
 
-    // 窗口初始隐藏：壳页 iframe 加载完成后由壳页调用 show()，
-    // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色）。
-    // 用显式 hide() 兜底：实测 visible(false) 在透明窗口上可能不生效。
+    // 显式 hide() 兜底：实测 visible(false) 在透明窗口上可能不生效
+    // （隐藏动机见上方 builder.visible(false) 注释）
     let _ = window.hide();
 
     #[cfg(target_os = "windows")]
-    apply_window_effect(&window);
-    // 关闭四角圆角（最大化时避免露出桌面背景的小缝隙）
-    disable_window_rounding(&window);
-    // 去除 WS_CAPTION 边框线（最大化后四边可见的细边框）
-    if let Ok(hwnd) = window.hwnd() {
-        let hwnd = hwnd.0 as isize;
-        make_window_popup_style(hwnd);
-        // tao 会在窗口状态变化时把样式重置回含 WS_CAPTION 的装饰样式。
-        // 用样式守卫（子类化 + WM_STYLECHANGED）事件驱动地立即修正，
-        // 替代常驻轮询线程。
-        style_guard::install(hwnd);
+    {
+        apply_window_effect(&window);
+        // 关闭四角圆角（最大化时避免露出桌面背景的小缝隙）
+        disable_window_rounding(&window);
+        // 去除 WS_CAPTION 边框线（最大化后四边可见的细边框）
+        if let Ok(hwnd) = window.hwnd() {
+            let hwnd = hwnd.0 as isize;
+            make_window_popup_style(hwnd);
+            // tao 会在窗口状态变化时把样式重置回含 WS_CAPTION 的装饰样式。
+            // 用样式守卫（子类化 + WM_STYLECHANGED）事件驱动地立即修正（无轮询线程）。
+            style_guard::install(hwnd);
+        }
     }
 
     Ok(window)
@@ -159,6 +159,25 @@ fn disable_window_rounding(window: &WebviewWindow) {
     }
 }
 
+/// 主显示器工作区宽高（物理像素，排除任务栏/菜单栏）。
+/// Windows 用 SPI_GETWORKAREA（与系统桌面含 RDP 会话一致）；
+/// 其他平台用 primary_monitor（获取失败时回退设计尺寸）。
+#[cfg(target_os = "windows")]
+fn primary_work_area(_app: &tauri::AppHandle) -> (u32, u32) {
+    let (_x, _y, w, h) = unsafe { work_area_ffi() };
+    (w.max(0) as u32, h.max(0) as u32)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn primary_work_area(app: &tauri::AppHandle) -> (u32, u32) {
+    if let Some(monitor) = app.primary_monitor().ok().flatten() {
+        let wa = monitor.work_area();
+        (wa.size.width.max(1), wa.size.height.max(1))
+    } else {
+        INITIAL_WINDOW_SIZE
+    }
+}
+
 /// 主显示器工作区（x, y, width, height，物理像素，排除任务栏）。
 /// 用 Win32 SPI_GETWORKAREA 直接获取：与系统桌面（含 RDP 会话）一致。
 #[cfg(target_os = "windows")]
@@ -205,7 +224,8 @@ unsafe fn work_area_ffi() -> (i32, i32, i32, i32) {
 /// 四周露出深色边框带——用户看到的"四方小缝隙"）。
 /// 窗口改为纯 WS_POPUP：内容铺满整个窗口；边缘调整大小由壳页自绘热区 +
 /// JS 拖拽（setPosition/setSize）实现。
-/// 注意：tao 会在窗口状态变化时重置样式，因此有常驻线程每 500ms 重新应用。
+/// 注意：tao 会在窗口状态变化时重置样式，由 WM_STYLECHANGED 样式守卫
+/// 即时修正（见 style_guard 模块，事件驱动、无轮询线程）。
 #[cfg(target_os = "windows")]
 fn make_window_popup_style(hwnd: isize) {
     const GWL_STYLE: i32 = -16;

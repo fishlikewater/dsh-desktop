@@ -365,8 +365,14 @@
       // ===== 配置 =====
       const params = new URLSearchParams(location.search);
       const DSH_URL = params.get("dsh") || "http://127.0.0.1:3080";
-      document.getElementById("target-line").innerHTML =
-        "请先运行 <code>dsh</code> 启动服务（目标 <code>" + DSH_URL + "</code>）";
+      // DOM 构建而非 innerHTML 拼接：URL 是外部输入，避免注入面
+      document.getElementById("target-line").replaceChildren(
+        document.createTextNode("请先运行 "),
+        Object.assign(document.createElement("code"), { textContent: "dsh" }),
+        document.createTextNode(" 启动服务（目标 "),
+        Object.assign(document.createElement("code"), { textContent: DSH_URL }),
+        document.createTextNode("）")
+      );
 
       // ===== DSH 主题同步（标题栏/覆盖层跟随 DSH GUI 外观设置）=====
       // DSH 把外观偏好持久化在 ~/.dsh/settings.yaml 的 ui-theme.preference

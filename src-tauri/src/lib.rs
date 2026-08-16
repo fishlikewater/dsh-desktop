@@ -11,7 +11,7 @@ mod window;
 use tauri::{Url, WebviewUrl, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-use config::dsh_url;
+use config::{dsh_url, encode_query_param};
 
 /// 注册全局快捷键：Ctrl+Shift+D 唤起主窗口
 fn setup_global_shortcut(app: &tauri::AppHandle) {
@@ -70,15 +70,9 @@ pub fn run() {
         .setup(|app| {
             log::info!(target: "app", "DSH Desktop starting, DSH_URL={}", dsh_url());
             // 壳页入口（自定义标题栏 + iframe 嵌入 DSH GUI），服务地址经 ?dsh= 传入
+            // 编码必须覆盖 # / + 等全部非 unreserved 字符（见 config::encode_query_param）
             let url: Url = dsh_url();
-            let encoded: String = url
-                .as_str()
-                .chars()
-                .map(|c| match c {
-                    ':' | '/' | '?' | '&' | '=' | '%' => format!("%{:02X}", c as u32),
-                    _ => c.to_string(),
-                })
-                .collect();
+            let encoded: String = encode_query_param(&url);
             let initial_url = WebviewUrl::App(format!("index.html?dsh={encoded}").into());
 
             window::create_main_window(app.handle(), initial_url)?;

@@ -134,7 +134,7 @@ debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 | 全局快捷键无效 | 快捷键可能被其他应用占用；查看启动日志中的注册失败告警 |
 | 安装包被 SmartScreen 拦截 | 未签名发布版的已知限制，见 [SECURITY.md](SECURITY.md) |
 
-日志位置：`%APPDATA%\com.dsh.desktop\logs\`（开发中版本暂以调试输出为主，详见 CHANGELOG）。
+日志位置：`%LOCALAPPDATA%\com.dsh.desktop\logs\dsh-desktop.log`（1MB 大小轮转，保留最近 5 份；设置页「打开日志目录」可直达）。
 
 ## 安全
 

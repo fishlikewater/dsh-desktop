@@ -1,6 +1,6 @@
 //! 日志模块：tauri-plugin-log 文件轮转输出 + 调试构建保留 stdout。
 //!
-//! - 文件：`%APPDATA%\com.dsh.desktop\logs\dsh-desktop.log`（1MB 大小轮转，保留全部旧文件）
+//! - 文件：`%LOCALAPPDATA%\com.dsh.desktop\logs\dsh-desktop.log`（1MB 大小轮转，保留最近 5 份，磁盘占用封顶）
 //! - debug 构建追加 stdout 目标（开发时终端可见，release 不输出）
 //! - 级别：Info（审计日志使用 info!，调试细节用 debug!）
 
@@ -19,5 +19,6 @@ pub fn init() -> Builder {
         .level(LevelFilter::Info)
         .targets(targets)
         .max_file_size(1_000_000)
-        .rotation_strategy(RotationStrategy::KeepAll)
+        // KeepSome(5)：轮转保留最近 5 份旧日志（约 6MB 上限），避免 KeepAll 无限增长
+        .rotation_strategy(RotationStrategy::KeepSome(5))
 }

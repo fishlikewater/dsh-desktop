@@ -19,6 +19,16 @@
 - T3.3 CI 流水线（.github/workflows/ci.yml：fmt→clippy→单测→构建→NSIS 打包）
 - T4.1 自动更新（tauri-plugin-updater + ed25519 密钥，发布物 latest.json）
 - T4.2 发布流程（安装包核验、SHA256 校验和、docs/release-process.md）
+- T4.3 GitHub Release 自动构建（release.yml：v* tag 触发，并行构建 macOS/Windows 安装包并发布 Release 草稿，含签名 latest.json 与 SHA256SUMS）
+
+### 修复（macOS 构建适配与打磨）
+
+- macOS 构建适配：Windows-only FFI/进程 API 按平台隔离（window 样式段、工作区获取、服务自管理、打开日志目录）；非 Windows 平台服务管理为 stub（返回可读错误）
+- 服务探活不再 panic：地址解析失败/空结果视为不可达
+- URL 参数编码完整化：服务地址经 ?dsh= 传入时 #/+/空格等字符不再丢失
+- 壳页服务提示行改 DOM 构建（消除 innerHTML 拼接注入面，CSP hash 已同步）
+- 停止服务失败时保留 pid 记录（可重试）
+- 日志轮转封顶（KeepSome(5)，约 6MB 上限，避免无限增长）
 
 ## [0.1.0] - 2026-08-16
 

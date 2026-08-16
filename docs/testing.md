@@ -89,6 +89,13 @@ node scripts/smoke/window-center.mjs
 
 ## 4. CI 接入（T3.3）
 
-CI 流水线将按顺序执行：fmt 检查 → clippy → 单元测试 → 静态检查 → debug 构建 →
-启动应用 → 冒烟 → release 打包。冒烟步骤依赖 DSH 服务：CI 中使用 `dsh --profile web`
-作为服务进程（或标记为可选步骤）。
+CI 流水线（.github/workflows/ci.yml，push main / PR / 手动触发）按顺序执行：
+fmt 检查 → clippy → 单元测试 → 前端静态检查（含 CSP hash）→ debug 构建 →
+release 构建 + NSIS 打包（上传安装包 artifact）。
+
+冒烟不在 CI 中执行：CDP 端到端依赖本机 DSH 服务（dsh CLI）与 `~/.dsh` 配置，
+CI runner 无 dsh 安装，由本地 `npm run smoke` 承担（见上文场景清单）。
+
+发布（v* tag）走独立的 .github/workflows/release.yml：并行构建
+macOS（Apple Silicon）与 Windows 安装包并发布 Release 草稿，见
+docs/release-process.md。

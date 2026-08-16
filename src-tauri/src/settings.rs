@@ -7,6 +7,7 @@ use std::path::Path;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
 /// 读取开机自启状态（注册表为准）。
@@ -53,24 +54,39 @@ pub fn update_check(app: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
-/// 打开日志目录（%LOCALAPPDATA%\com.dsh.desktop\logs）到资源管理器。
+/// 打开日志目录到系统文件管理器（Windows：explorer；macOS：open）。
+/// 目录取自 tauri app_log_dir（Windows=%LOCALAPPDATA%\com.dsh.desktop\logs，
+/// 与 logging 插件的 LogDir 一致）。
 #[tauri::command]
-pub fn open_log_dir() -> Result<String, String> {
-    let appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let dir = Path::new(&appdata).join("com.dsh.desktop").join("logs");
+pub fn open_log_dir(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("获取日志目录失败: {e}"))?;
     if let Err(e) = std::fs::create_dir_all(&dir) {
         return Err(format!("创建日志目录失败: {e}"));
     }
-    // DETACHED_PROCESS：explorer 独立于壳层进程（同 T5.1 的 rustc 1.95 注意点）
-    let child = std::process::Command::new("explorer")
-        .arg(dir.to_str().unwrap_or_default())
-        .creation_flags(0x0000_0008)
-        .spawn();
+    let child = open_dir_in_file_manager(&dir);
     match child {
-        Ok(_) => {
+        Ok(()) => {
             log::info!(target: "settings", "已打开日志目录 {}", dir.display());
             Ok(format!("已打开日志目录 {}", dir.display()))
         }
         Err(e) => Err(format!("打开日志目录失败: {e}")),
     }
+}
+
+#[cfg(target_os = "windows")]
+fn open_dir_in_file_manager(dir: &Path) -> std::io::Result<()> {
+    // DETACHED_PROCESS：explorer 独立于壳层进程（同 T5.1 的 rustc 1.95 注意点）
+    std::process::Command::new("explorer")
+        .arg(dir.to_str().unwrap_or_default())
+        .creation_flags(crate::service::DETACHED_PROCESS)
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn open_dir_in_file_manager(dir: &Path) -> std::io::Result<()> {
+    std::process::Command::new("open").arg(dir).spawn().map(|_| ())
 }
