@@ -1,0 +1,3 @@
+{"file": "src-tauri/Cargo.toml", "reason": "release profile 加固"}
+{"file": "scripts/bench/baseline.mjs", "reason": "运行时内存/CPU 基线测量脚本"}
+{"file": "docs/perf.md", "reason": "性能基线文档"}
