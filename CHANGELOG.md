@@ -4,14 +4,21 @@
 
 ## [Unreleased]
 
-### 工程化（生产级改造）
+### 工程化（生产级改造，进行中，见 docs/development-plan.md）
 
-- 初始化 git 仓库与提交基线（T0.1）
-- 引入 MIT 开源许可证、CHANGELOG、SECURITY 文档（T0.2）
-- 后续按阶段补充：代码规范门禁（T0.3）、模块化重构（T1.1）、日志系统（T1.2）、
-  启动时序事件化（T1.3）、配置层（T1.4）、CSP 与权限收敛（T2.x）、
-  测试与 CI（T3.x）、自动更新与发布（T4.x）、DSH 服务托管（T5.x）、
-  体验兜底（T6.x）
+- T0.1 初始化 git 仓库与提交基线；T0.2 MIT 许可证、CHANGELOG、SECURITY 文档
+- T0.3 代码规范门禁（`npm run check`：clippy `-D warnings` + 前端脚本/CSP hash 检查）
+- T1.1 Rust 模块化重构（config/logging/theme/tray/window）
+- T1.2 日志系统（tauri-plugin-log：文件输出 1MB 轮转 + debug stdout；关键路径审计日志）
+- T1.3 启动时序去魔法数（居中线程 → 壳页事件驱动）
+- T1.4 壳层配置层（config.json：dsh_url/dsh_home，环境变量优先）+ 主题解析/监听加固（23 例单测）
+- T2.1 壳页 CSP（内联脚本 sha256 白名单，frame/connect 限 127.0.0.1/localhost）
+- T2.2 capabilities 最小权限（6 项窗口写权限 + core:default）
+- T2.3 全局注入评估（iframe 能力层隔离：对象存在但 IPC 按 URL 粒度拒绝）
+- T3.1 Rust 单元测试（23 例，含反例验证）；T3.2 端到端冒烟脚本（`npm run smoke`，4 场景）
+- T3.3 CI 流水线（.github/workflows/ci.yml：fmt→clippy→单测→构建→NSIS 打包）
+- T4.1 自动更新（tauri-plugin-updater + ed25519 密钥，发布物 latest.json）
+- T4.2 发布流程（安装包核验、SHA256 校验和、docs/release-process.md）
 
 ## [0.1.0] - 2026-08-16
 
