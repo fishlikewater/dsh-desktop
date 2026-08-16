@@ -1,0 +1,2 @@
+{"file": "src-tauri/src/config.rs", "reason": "ShellConfig 配置层（config.json + 环境变量优先级 + 单测）"}
+{"file": "src-tauri/src/theme.rs", "reason": "解析提取 parse_theme_preference + 单测；watcher 失败重试"}
