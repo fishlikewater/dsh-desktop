@@ -1,0 +1,6 @@
+{"file": "src-tauri/src/config.rs", "reason": "配置与常量模块（DSH_URL/settings 路径/窗口尺寸）", "type": "planned-file"}
+{"file": "src-tauri/src/theme.rs", "reason": "主题模块（theme_preference 解析 + watcher）", "type": "planned-file"}
+{"file": "src-tauri/src/window.rs", "reason": "窗口模块（创建/居中/样式守卫/几何）", "type": "planned-file"}
+{"file": "src-tauri/src/tray.rs", "reason": "托盘模块", "type": "planned-file"}
+{"file": "src-tauri/src/logging.rs", "reason": "日志模块骨架（T1.2 填充）", "type": "planned-file"}
+{"file": "src-tauri/src/lib.rs", "reason": "收敛为 run() 装配 + 命令注册"}
