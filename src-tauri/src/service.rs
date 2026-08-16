@@ -66,6 +66,11 @@ fn service_reachable() -> bool {
 /// 找不到 dsh CLI 时返回可读错误（前端提示安装）。
 #[tauri::command]
 pub fn service_start() -> Result<u32, String> {
+    start_service()
+}
+
+/// 启动 DSH 服务（托盘与 command 共用核心逻辑）。
+pub fn start_service() -> Result<u32, String> {
     if service_reachable() {
         return Ok(0); // 已在运行
     }
@@ -75,6 +80,49 @@ pub fn service_start() -> Result<u32, String> {
         return Err(msg.into());
     };
     spawn_dsh(&dsh)
+}
+
+/// 停止**本应用拉起的** DSH 服务进程树（taskkill /T /F）。
+/// 不触碰用户自启的服务：仅当 SERVICE_CHILD 记录且进程存活时执行；
+/// 否则返回提示（不误杀）。
+#[tauri::command]
+pub fn service_stop() -> Result<String, String> {
+    stop_service()
+}
+
+/// 停止本应用拉起的服务（托盘与 command 共用核心逻辑）。
+pub fn stop_service() -> Result<String, String> {
+    let mut guard = service_child().lock().unwrap();
+    let Some(child) = guard.as_mut() else {
+        return Err("未找到由本应用拉起的 DSH 服务（可能由其他方式启动，未做处理）".into());
+    };
+    // try_wait 检查进程是否还活着（已退出则清理句柄）
+    match child.try_wait() {
+        Ok(Some(_status)) => {
+            *guard = None;
+            return Err("本应用拉起的 DSH 服务已退出".into());
+        }
+        Ok(None) => {}
+        Err(e) => log::warn!(target: "service", "检查服务进程状态失败: {e}"),
+    }
+    let pid = child.id();
+    // taskkill /T：连同进程树（dsh.cmd → node 子进程）一起结束
+    let kill = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .creation_flags(0x0000_0008)
+        .output();
+    match kill {
+        Ok(out) if out.status.success() => {
+            *guard = None;
+            log::info!(target: "service", "已停止本应用拉起的 DSH 服务（pid={pid}）");
+            Ok(format!("已停止 DSH 服务（pid={pid}）"))
+        }
+        Ok(out) => Err(format!(
+            "停止服务失败（pid={pid}）: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+        Err(e) => Err(format!("停止服务失败（pid={pid}）: {e}")),
+    }
 }
 
 /// 按扩展名选择启动方式拉起 dsh --profile web。

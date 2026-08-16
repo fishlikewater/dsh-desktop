@@ -42,7 +42,8 @@ pub fn run() {
             tray::notify,
             window::work_area,
             theme::theme_preference,
-            service::service_start
+            service::service_start,
+            service::service_stop
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

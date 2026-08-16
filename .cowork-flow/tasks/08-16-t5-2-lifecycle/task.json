@@ -1,0 +1,28 @@
+{
+  "id": "08-16-t5-2-lifecycle",
+  "name": "08-16-t5-2-lifecycle",
+  "title": "T5.2 服务生命周期管理",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "priority": "P2",
+  "creator": "zhangxiang",
+  "assignee": "main",
+  "createdAt": "2026-08-16",
+  "completedAt": null,
+  "commit": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "planFile": ".cowork-flow/plans/2026-08-16-production-hardening-devplan.md"
+  },
+  "_state": {
+    "schema_version": 1,
+    "revision": 2,
+    "operation_id": "task-start-49ef21a86962342d"
+  }
+}
