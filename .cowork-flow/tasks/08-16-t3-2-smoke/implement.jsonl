@@ -1,0 +1,7 @@
+{"file": "scripts/smoke/theme-sync.mjs", "reason": "主题即时同步冒烟（迁移规范化）", "type": "planned-file"}
+{"file": "scripts/smoke/window-ctrl.mjs", "reason": "窗口控制权限冒烟（迁移规范化）", "type": "planned-file"}
+{"file": "scripts/smoke/isolation.mjs", "reason": "隔离边界 + iframe IPC 拒绝冒烟（合并迁移）", "type": "planned-file"}
+{"file": "scripts/smoke/window-center.mjs", "reason": "窗口居中冒烟（修复采样时序）", "type": "planned-file"}
+{"file": "scripts/smoke/run-all.mjs", "reason": "冒烟编排：前置检查 + 顺序执行", "type": "planned-file"}
+{"file": "package.json", "reason": "新增 smoke 脚本"}
+{"file": "docs/testing.md", "reason": "测试说明文档", "type": "planned-file"}

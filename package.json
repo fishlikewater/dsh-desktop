@@ -12,9 +12,11 @@
     "icon": "tauri icon",
     "check:frontend": "node scripts/check-frontend.mjs",
     "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
-    "check": "npm run setup && npm run check:rust && npm run check:frontend"
+    "check": "npm run setup && npm run check:rust && npm run check:frontend",
+    "smoke": "node scripts/smoke/run-all.mjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2",
+    "ws": "^8.21.3"
   }
 }
