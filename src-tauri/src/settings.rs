@@ -38,9 +38,7 @@ pub fn autostart_toggle(app: tauri::AppHandle) -> Result<bool, String> {
 #[tauri::command]
 pub fn update_check(app: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
-    let updater = app
-        .updater()
-        .map_err(|e| format!("更新器不可用: {e}"))?;
+    let updater = app.updater().map_err(|e| format!("更新器不可用: {e}"))?;
     match tauri::async_runtime::block_on(updater.check()) {
         Ok(Some(update)) => {
             log::info!(target: "settings", "发现新版本 {}", update.version);
@@ -88,5 +86,8 @@ fn open_dir_in_file_manager(dir: &Path) -> std::io::Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 fn open_dir_in_file_manager(dir: &Path) -> std::io::Result<()> {
-    std::process::Command::new("open").arg(dir).spawn().map(|_| ())
+    std::process::Command::new("open")
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
 }

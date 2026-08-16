@@ -111,7 +111,8 @@ pub fn start_service() -> Result<u32, String> {
         return Ok(0); // 已在运行
     }
     let Some(dsh) = find_dsh() else {
-        let msg = "未找到 dsh 命令：请安装 DSH 后重试（或设置 DSH_CLI 环境变量指向 dsh 可执行文件）";
+        let msg =
+            "未找到 dsh 命令：请安装 DSH 后重试（或设置 DSH_CLI 环境变量指向 dsh 可执行文件）";
         log::warn!(target: "service", "{msg}");
         return Err(msg.into());
     };
@@ -171,7 +172,11 @@ pub fn stop_service() -> Result<String, String> {
 /// 用 DETACHED_PROCESS(0x8) 不弹控制台窗口。
 #[cfg(target_os = "windows")]
 fn spawn_dsh(dsh: &Path) -> Result<u32, String> {
-    let ext = dsh.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = dsh
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     let child = match ext.as_str() {
         "cmd" => std::process::Command::new("cmd")
             .args(["/c", dsh.to_str().unwrap_or_default(), "--profile", "web"])
