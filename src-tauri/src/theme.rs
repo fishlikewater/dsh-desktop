@@ -32,8 +32,8 @@ pub fn parse_theme_preference(content: &str) -> String {
     "light".into()
 }
 
-/// 读取 DSH 外观主题偏好（~/.dsh/settings.yaml 的 ui-theme.preference：
-/// light | dark | system；由 DSH GUI 外观设置持久化）。
+/// 读取 DSH 外观主题偏好（<DSH 数据目录>/settings.yaml 的 ui-theme.preference：
+/// light | dark | system；数据目录默认 ~/.dsh，由 DSH GUI 外观设置持久化）。
 /// 壳页用它同步自定义标题栏配色（system 时前端跟随系统 prefers-color-scheme）。
 #[tauri::command]
 pub fn theme_preference() -> String {

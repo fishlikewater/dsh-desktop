@@ -116,7 +116,9 @@ pub fn dsh_url() -> Url {
 }
 
 /// 解析 DSH 数据目录（纯函数，便于单测）：
-/// env 非空 → env；config 非空 → config；userprofile 非空 → userprofile；否则 "."。
+/// env 非空 → env；config 非空 → config；userprofile 非空 → userprofile/.dsh；
+/// 否则 ./.dsh。DSH 默认数据目录为 ~/.dsh（DSH_HOME 与 config.json dsh_home
+/// 语义本就是数据目录本身，原样直用；仅 USERPROFILE 兜底需追加 .dsh）。
 fn resolve_dsh_home(
     env_value: Option<&str>,
     config_value: Option<&str>,
@@ -131,11 +133,14 @@ fn resolve_dsh_home(
                 .map(String::from)
         })
         .or_else(|| {
+            // DSH 默认数据目录：<userprofile>/.dsh（"/" 在 Windows 上同样合法；
+            // 纯字符串拼接而非 Path join：windows-gnu 下测试代码路径中的 PathBuf
+            // 构造会触发 0xc0000139，见 docs/testing.md）
             userprofile
                 .filter(|v| !v.trim().is_empty())
-                .map(String::from)
+                .map(|v| format!("{v}/.dsh"))
         })
-        .unwrap_or_else(|| ".".into())
+        .unwrap_or_else(|| "./.dsh".into())
 }
 
 /// 把服务地址编码为壳页 query 参数值（与 JS URLSearchParams.get 解码对称）：
@@ -155,8 +160,8 @@ pub fn encode_query_param(url: &Url) -> String {
         .collect()
 }
 
-/// DSH 外观主题持久化文件路径：$DSH_HOME/settings.yaml
-/// （DSH_HOME 解析优先级：环境变量 > config.json dsh_home > USERPROFILE）。
+/// DSH 外观主题持久化文件路径：<DSH 数据目录>/settings.yaml
+/// （数据目录解析优先级：DSH_HOME 环境变量 > config.json dsh_home > USERPROFILE/.dsh）。
 pub fn theme_settings_path() -> PathBuf {
     let home = resolve_dsh_home(
         std::env::var("DSH_HOME").ok().as_deref(),
@@ -233,8 +238,9 @@ mod tests {
         );
         assert_eq!(resolve_dsh_home(Some("  "), Some("cfg"), Some("up")), "cfg");
         assert_eq!(resolve_dsh_home(None, Some("cfg"), Some("up")), "cfg");
-        assert_eq!(resolve_dsh_home(None, None, Some("up")), "up");
-        assert_eq!(resolve_dsh_home(None, None, None), ".");
+        // USERPROFILE 兜底必须追加默认数据目录 .dsh（主题路径解析依赖此约定）
+        assert_eq!(resolve_dsh_home(None, None, Some("up")), "up/.dsh");
+        assert_eq!(resolve_dsh_home(None, None, None), "./.dsh");
     }
 
     #[test]
