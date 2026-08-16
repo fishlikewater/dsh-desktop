@@ -3,7 +3,7 @@
   "name": "08-16-t5-2-lifecycle",
   "title": "T5.2 服务生命周期管理",
   "description": "",
-  "status": "in_progress",
+  "status": "review",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-49ef21a86962342d"
+    "revision": 3,
+    "operation_id": "task-review-d868878db2a8649c"
   }
 }
