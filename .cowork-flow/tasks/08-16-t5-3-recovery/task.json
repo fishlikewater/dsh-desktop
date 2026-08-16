@@ -3,7 +3,7 @@
   "name": "08-16-t5-3-recovery",
   "title": "T5.3 错误恢复与降级",
   "description": "",
-  "status": "in_progress",
+  "status": "review",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-ac4f762c01d0edc5"
+    "revision": 3,
+    "operation_id": "task-review-cda8af5f988d012c"
   }
 }
