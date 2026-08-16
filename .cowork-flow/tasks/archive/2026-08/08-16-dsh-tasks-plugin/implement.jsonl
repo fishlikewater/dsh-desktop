@@ -1,3 +1,0 @@
-{"file": "src-tauri/src/lib.rs", "reason": "移除定时任务全部后端代码；托盘项改为打开 GUI"}
-{"file": "frontend-dist/index.html", "reason": "移除任务面板/时钟按钮/相关监听与样式"}
-{"file": "README.md", "reason": "定时任务条目更新为插件形态"}

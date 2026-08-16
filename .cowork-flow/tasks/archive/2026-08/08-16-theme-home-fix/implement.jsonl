@@ -1,5 +1,0 @@
-{"file":".cowork-flow/plans/2026-08-16-theme-home-fix.md","reason":"任务实施计划（任务创建时绑定）","type":"planned-file"}
-{"file":"src-tauri/src/config.rs","reason":"resolve_dsh_home 默认路径补 .dsh + 单测更新","type":"planned-file"}
-{"file":"src-tauri/src/theme.rs","reason":"路径说明注释同步 .dsh 语义","type":"planned-file"}
-{"file":"src-tauri/src/logging.rs","reason":"release 构建暴露的 unused_mut 警告（cfg(debug_assertions) 下 push 分支导致）","type":"planned-file"}
-{"file":"CHANGELOG.md","reason":"Unreleased 补主题修复条目","type":"planned-file"}

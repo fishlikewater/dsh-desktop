@@ -1,5 +1,0 @@
-{"file":".cowork-flow/plans/2026-08-16-github-release-ci.md","reason":"任务实施计划（task-planning 产出，任务创建时绑定）","type":"planned-file"}
-{"file":"scripts/patch-updater-endpoint.mjs","reason":"CI 构建前替换 updater endpoint 占位 OWNER/REPO","type":"planned-file"}
-{"file":".github/workflows/release.yml","reason":"tag push 自动构建 mac/win 安装包并发布 Release 草稿","type":"planned-file"}
-{"file":"docs/release-process.md","reason":"发布章节改为自动流程并补首次部署前置","type":"planned-file"}
-{"file":"docs/updater.md","reason":"endpoint 占位改为 CI 动态替换说明","type":"planned-file"}

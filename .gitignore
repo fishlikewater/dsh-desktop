@@ -24,8 +24,9 @@ ScreenShot_*.png
 # ===== updater 签名私钥（公钥在 tauri.conf.json，勿入库）=====
 .tauri/dsh-desktop.key
 
-# ===== cowork-flow 运行时状态（流程代码/文档/tasks 入库）=====
-.cowork-flow/.runtime/
+# ===== 个人流程与技能资产（仅本地保留，不入库）=====
+.cowork-flow/
+.agents/
 
 # ===== 编辑器/系统 =====
 .vscode/

@@ -1,2 +1,0 @@
-{"file": "src-tauri/src/service.rs", "reason": "start_service/stop_service 核心逻辑提纯 + 单测"}
-{"file": "src-tauri/src/tray.rs", "reason": "托盘菜单启动/停止服务项 + 通知反馈"}

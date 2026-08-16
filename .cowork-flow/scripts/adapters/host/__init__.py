@@ -1,1 +1,0 @@
-"""Shared host adapter runtime."""

@@ -1,3 +1,0 @@
-{"file": "src-tauri/src/service.rs", "reason": "服务拉起模块（find_dsh/service_start + 单测）", "type": "planned-file"}
-{"file": "src-tauri/src/lib.rs", "reason": "注册 service 模块与 command"}
-{"file": "frontend-dist/index.html", "reason": "覆盖层启动服务按钮"}

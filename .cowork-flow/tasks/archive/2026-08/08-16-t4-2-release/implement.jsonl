@@ -1,3 +1,0 @@
-{"file": "docs/release-process.md", "reason": "发版清单与核验流程", "type": "planned-file"}
-{"file": "CHANGELOG.md", "reason": "0.1.0 定稿核对"}
-{"file": "src-tauri/target/release/bundle/nsis/SHA256SUMS.txt", "reason": "安装包校验和（生成产物，随发布附件）"}

@@ -1,5 +1,0 @@
-{"file": "src-tauri/tauri.conf.json", "reason": "plugins.updater：pubkey + endpoints"}
-{"file": "src-tauri/Cargo.toml", "reason": "tauri-plugin-updater + tauri-plugin-process 依赖"}
-{"file": "src-tauri/src/lib.rs", "reason": "注册 updater/process 插件"}
-{"file": ".gitignore", "reason": "updater 私钥忽略"}
-{"file": "docs/updater.md", "reason": "发布流程文档", "type": "planned-file"}

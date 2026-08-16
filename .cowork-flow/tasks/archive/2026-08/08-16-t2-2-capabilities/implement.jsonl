@@ -1,1 +1,0 @@
-{"file": "src-tauri/capabilities/default.json", "reason": "收敛为 core:default + 6 项窗口写权限（按壳页实际调用）"}
