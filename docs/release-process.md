@@ -63,18 +63,46 @@ Get-ChildItem "$PWD\src-tauri\target\release\bundle\nsis\*.exe" | ForEach-Object
 
 校验和随发布附件提供（未签名场景下用户以此核对完整性）。
 
-## 发布到 GitHub Releases
+## 发布到 GitHub Releases（自动）
 
-1. 创建 Release（tag `v<version>`，标题同 tag）
-2. 上传附件：
-   - `DSH Desktop_<version>_x64-setup.exe`
-   - `latest.json`（必须命名为 `latest.json`，updater endpoints 引用）
-   - `SHA256SUMS.txt`
-3. Release 说明引用 CHANGELOG 对应段落
-4. 发布后核对：`https://github.com/<owner>/<repo>/releases/latest/download/latest.json` 可达
+推送 tag 即触发 CI（.github/workflows/release.yml，仅 `v*` tag）：
+
+```bash
+git push origin main --tags
+```
+
+CI 并行构建 Windows（NSIS，windows-gnu 工具链）与 macOS（dmg/app，Apple Silicon）
+安装包，自动创建（或更新）同名 **Release 草稿**并上传产物：
+`DSH Desktop_<version>_x64-setup.exe`、`latest.json`（Windows 签名更新清单）、
+`SHA256SUMS.txt`、macOS dmg/app。updater endpoint 占位 `OWNER/REPO` 由 CI
+构建前以 `GITHUB_REPOSITORY` 动态替换，无需手工改配置。
+
+人工核验草稿后手动 Publish：
+
+- 资产齐全：exe / latest.json / SHA256SUMS.txt / dmg / app 压缩包
+- latest.json 的 url 指向本仓库且 signature 非空（见 docs/updater.md）
+- 本地安装冒烟照旧（见「安装包核验」）
+- Release 说明引用 CHANGELOG 对应段落
+
+### 首次部署前置（一次性）
+
+1. 配置 GitHub 远程并推送（首次发版后 CI 即可生效）：
+
+   ```bash
+   git remote add origin https://github.com/<owner>/<repo>.git
+   git push -u origin main --tags
+   ```
+
+2. 配置签名私钥 secret：仓库 Settings → Secrets and variables → Actions，
+   新建 `TAURI_SIGNING_PRIVATE_KEY`，值为本地 `.tauri/dsh-desktop.key` 全文
+   （勿提交仓库）。未配置时 Windows 构建仍完成，但 latest.json 无签名、
+   updater 校验失败（不影响安装包本身）。
+3. 发布后核对：`https://github.com/<owner>/<repo>/releases/latest/download/latest.json` 可达
 
 ## 已知限制
 
-- 仓库尚无 GitHub 远程：Releases 无法上传，updater 不可用（endpoint 404 时静默降级，不影响使用）
-- 安装包未签名：SmartScreen 提示，用户按 SHA256 核对
+- CI 发布需仓库已推送 GitHub 且配置 `TAURI_SIGNING_PRIVATE_KEY` secret 后生效；
+  在此之前 GitHub 端行为无法验证（本地流程不受影响）
+- 安装包未签名：Windows SmartScreen 提示，用户按 SHA256 核对
+- macOS 产物未签名/未公证：Gatekeeper 提示，右键打开（Apple Silicon 专用，无 Intel 构建）
 - updater 密钥/私钥管理见 docs/updater.md（私钥丢失 = 无法发更新）

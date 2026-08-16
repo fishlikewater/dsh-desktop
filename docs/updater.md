@@ -6,7 +6,9 @@
   由 `tauri signer` 生成的密钥对负责。
 - 发布物：NSIS 安装包（`.exe`）+ 签名清单 `latest.json`，托管在 GitHub Releases
   （`endpoints` 指向 `https://github.com/OWNER/REPO/releases/latest/download/latest.json`）。
-- 当前 `OWNER/REPO` 为占位：仓库创建后替换 `src-tauri/tauri.conf.json` 中的 endpoints。
+- `OWNER/REPO` 为仓库占位：CI 构建前由 `scripts/patch-updater-endpoint.mjs`
+  以 `GITHUB_REPOSITORY` 动态替换为真实仓库；本地构建保持占位（不影响本地调试，
+  更新检查 404 时静默降级）。
 
 ## 密钥管理（重要）
 
@@ -36,7 +38,9 @@ npm run build
 > 若私钥有密码，需设置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 
 ```bash
-# 2. 上传到 GitHub Releases（Release 名为版本号，如 v0.1.1）
+# 2. 上传到 GitHub Releases：推送 tag 即由 CI 自动完成
+#    （见 docs/release-process.md「发布到 GitHub Releases（自动）」）；
+#    本地手工上传作为兜底（Release 名为版本号，如 v0.1.1）：
 #    附件：
 #      DSH Desktop_<version>_x64-setup.exe
 #      latest.json
