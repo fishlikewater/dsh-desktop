@@ -3,7 +3,7 @@
   "name": "08-16-t5-1-service",
   "title": "T5.1 DSH 服务自管理",
   "description": "",
-  "status": "in_progress",
+  "status": "review",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-e0f39f92bfb9df4f"
+    "revision": 3,
+    "operation_id": "task-review-fdd192b92ca8b82a"
   }
 }
