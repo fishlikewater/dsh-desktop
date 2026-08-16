@@ -3,14 +3,14 @@
   "name": "08-16-t1-2-logging",
   "title": "T1.2 日志系统",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
   "creator": "zhangxiang",
   "assignee": "main",
   "createdAt": "2026-08-16",
-  "completedAt": null,
+  "completedAt": "2026-08-16",
   "commit": null,
   "subtasks": [],
   "children": [],
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-74eabfdf137529e7"
+    "revision": 5,
+    "operation_id": "task-save-afb18999a7f34809a8d2ba05d81941bb"
   }
 }
