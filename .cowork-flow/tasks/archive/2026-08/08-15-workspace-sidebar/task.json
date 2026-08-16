@@ -1,0 +1,28 @@
+{
+  "id": "08-15-workspace-sidebar",
+  "name": "08-15-workspace-sidebar",
+  "title": "侧边栏适配 + 工作区选择 + 表单增强",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "priority": "P0",
+  "creator": "zhangxiang",
+  "assignee": "main",
+  "createdAt": "2026-08-15",
+  "completedAt": "2026-08-15",
+  "commit": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "planFile": ".cowork-flow/plans/2026-08-15-workspace-sidebar.md"
+  },
+  "_state": {
+    "schema_version": 1,
+    "revision": 5,
+    "operation_id": "task-save-d95b9717d10443b5992a6e5ba164703b"
+  }
+}

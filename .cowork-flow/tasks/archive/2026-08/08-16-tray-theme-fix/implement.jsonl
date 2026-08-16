@@ -1,0 +1,3 @@
+{"file": "src-tauri/src/lib.rs", "reason": "移除托盘定时任务项与事件分支；新增 theme_preference command"}
+{"file": "frontend-dist/index.html", "reason": "深色主题变量与 system 模式 media query；主题轮询同步 JS"}
+{"file": "README.md", "reason": "托盘项移除与主题跟随条目更新"}

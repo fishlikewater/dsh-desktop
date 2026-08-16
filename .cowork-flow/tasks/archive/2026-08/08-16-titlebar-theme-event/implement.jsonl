@@ -1,0 +1,4 @@
+{"file": "src-tauri/Cargo.toml", "reason": "新增 notify 依赖（文件监听）"}
+{"file": "src-tauri/src/lib.rs", "reason": "新增 settings.yaml 父目录 watcher，文件名匹配时防抖 emit theme-file-changed 事件"}
+{"file": "frontend-dist/index.html", "reason": "监听 theme-file-changed 事件即时刷新主题；轮询 3s 降为 30s 兜底"}
+{"file": "README.md", "reason": "主题同步机制由轮询改为事件驱动条目更新"}

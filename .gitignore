@@ -1,0 +1,38 @@
+# ===== Rust / Tauri =====
+/target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+# ===== Node =====
+node_modules/
+
+# ===== 生成产物 =====
+dist/
+*.log
+logs/
+*.bak-*
+
+# ===== 工具链/调试产物 =====
+.toolchain-test/
+.dsh-vision-toolkit/
+ScreenShot_*.png
+
+# ===== cowork-flow 运行时状态（流程代码/文档/tasks 入库）=====
+.cowork-flow/.runtime/
+
+# ===== 编辑器/系统 =====
+.vscode/
+.idea/
+*.iml
+Thumbs.db
+.DS_Store
+
+# ===== Python =====
+__pycache__/
+*.pyc
+
+# ===== 本地环境覆盖 =====
+.env
+.env.local

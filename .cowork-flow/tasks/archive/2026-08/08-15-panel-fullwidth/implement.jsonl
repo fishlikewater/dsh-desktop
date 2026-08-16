@@ -1,0 +1,1 @@
+{"file": "frontend-dist/index.html", "reason": "移除 tasks-shield 拦截层；面板三档侧边栏模式（全宽/展开/收起）；默认全宽覆盖"}

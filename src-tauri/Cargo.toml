@@ -1,0 +1,33 @@
+[package]
+name = "dsh-desktop"
+version = "0.1.0"
+description = "DSH 桌面壳：把 DeepSeek Harness Web GUI 包装为 Windows 桌面应用"
+authors = ["dsh-desktop"]
+edition = "2021"
+
+[lib]
+name = "dsh_desktop_lib"
+# 纯桌面壳：仅 rlib。不要加 cdylib/staticlib（移动端模板结构），
+# 否则 windows-gnu 链接器生成 DLL 导出表时 ordinal 溢出（export ordinal too large）。
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+window-vibrancy = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "7"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

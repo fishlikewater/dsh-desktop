@@ -1,0 +1,3 @@
+{"file": "src-tauri/Cargo.toml", "reason": "新增 tauri-plugin-dialog 依赖（原生文件夹选择器）"}
+{"file": "src-tauri/src/lib.rs", "reason": "Task.workspace 字段、run 执行目录、pick_workspace command、插件注册"}
+{"file": "frontend-dist/index.html", "reason": "侧边栏模式切换、表单标题/大文本框/工作区字段、抽屉工作区行"}

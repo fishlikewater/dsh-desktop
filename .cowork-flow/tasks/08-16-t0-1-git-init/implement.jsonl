@@ -1,0 +1,2 @@
+{"file": ".gitignore", "reason": "补全忽略项（截图/工具链产物/运行时状态/生成物）"}
+{"file": ".git", "reason": "git init 仓库初始化", "type": "planned-file"}
