@@ -27,6 +27,12 @@ ScreenShot_*.png
 # ===== 个人流程与技能资产（仅本地保留，不入库）=====
 .cowork-flow/
 .agents/
+.dsh/
+
+# ===== 个人文档与本地说明（仅本地保留，不入库）=====
+AGENTS.md
+SECURITY.md
+docs/
 
 # ===== 编辑器/系统 =====
 .vscode/

@@ -4,7 +4,7 @@
 
 把 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的 Web GUI（默认 `http://127.0.0.1:3080`）包装为 Windows 桌面应用的 Tauri 壳层。
 
-> 项目处于活跃开发阶段（v0.1.x）。生产级改造计划见 [docs/production-hardening-plan.md](docs/production-hardening-plan.md)，任务分解见 [docs/development-plan.md](docs/development-plan.md)。
+> 项目处于活跃开发阶段（v0.1.x）。生产级改造计划见 docs/production-hardening-plan.md，任务分解见 docs/development-plan.md。
 
 ## 功能
 
@@ -53,7 +53,7 @@ npm run check
 # 单元测试（Rust）
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 
-# 端到端冒烟（CDP，需 debug 构建 + DSH 服务在线；详见 docs/testing.md）
+# 端到端冒烟（CDP，需 debug 构建 + DSH 服务在线；步骤见本地 docs/testing.md）
 npm run smoke
 
 # 生成安装包（NSIS）
@@ -114,7 +114,7 @@ dsh-desktop/
 - **Codex 风格**：壳层配色对齐 Codex 桌面（深色背景 #181818/表面 #2D2D2B/珊瑚橙强调 #D9645A，
   浅色背景 #FFFFFF/侧边栏 #F2F3F3）；标题栏为**不透明纯色**（修复 Mica/backdrop 导致的顶部
   透明-暗色闪烁）；应用图标为 DSH 鲸鱼 logo（浅灰圆角底 + 黑色鲸鱼，`src-tauri/icons/app-icon.svg`）
-- Codex 功能对照评估见 [docs/codex-features-evaluation.md](docs/codex-features-evaluation.md)
+- Codex 功能对照评估见 docs/codex-features-evaluation.md
 
 ## 持续集成（CI）
 
@@ -122,7 +122,7 @@ dsh-desktop/
 debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 
 > **当前状态**：仓库尚无 GitHub 远程，workflow 未实际触发过。推送到 GitHub 后
-> 即自动启用；本地等价验证命令序列见 [docs/testing.md](docs/testing.md)。
+> 即自动启用；本地等价验证命令序列见 docs/testing.md。
 > 端到端冒烟依赖本机 DSH 服务与 `~/.dsh` 配置，不作为 CI 步骤（本地 `npm run smoke` 承担）。
 
 ## 故障排查
@@ -132,7 +132,7 @@ debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 | 窗口显示"DSH 服务未运行" | 确认 `dsh` 服务已启动（`dsh --profile web`）；或设置 `DSH_URL` 指向实际地址后重启应用 |
 | 标题栏主题不跟随 | 检查 `~/.dsh/settings.yaml` 的 `ui-theme.preference` 值（light/dark/system）；应用日志（见下文）确认 watcher 状态 |
 | 全局快捷键无效 | 快捷键可能被其他应用占用；查看启动日志中的注册失败告警 |
-| 安装包被 SmartScreen 拦截 | 未签名发布版的已知限制，见 [SECURITY.md](SECURITY.md) |
+| 安装包被 SmartScreen 拦截 | 未签名发布版的已知限制（SHA256 核验指引见 SECURITY.md） |
 
 日志位置：`%LOCALAPPDATA%\com.dsh.desktop\logs\dsh-desktop.log`（1MB 大小轮转，保留最近 5 份；设置页「打开日志目录」可直达）。
 
@@ -141,7 +141,7 @@ debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 - 壳页与远程 GUI 隔离：iframe 无 Tauri 权限
 - capabilities 最小权限声明
 - **CSP**：壳页启用内容安全策略（内联脚本 sha256 白名单；iframe/连接仅允许 `http://127.0.0.1:*` 与 `http://localhost:*`）。自定义 `DSH_URL` 指向其他主机时，需同步扩展 `src-tauri/tauri.conf.json` 的 `security.csp`（`frame-src`/`connect-src`）
-- 安全说明与漏洞报告见 [SECURITY.md](SECURITY.md)
+- 安全说明与漏洞报告见 SECURITY.md
 
 ## 路线图
 
@@ -153,7 +153,7 @@ debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 - [x] 原生窗口质感（无边框 + 自定义标题栏 + Mica/Acrylic 毛玻璃 + 伪最大化）
 - [x] 无边框线/无缝隙（DWM 直角 + WS_POPUP 样式 + 关闭阴影偏移 + 自绘 resize）
 - [x] 单实例（防快捷键冲突）+ 无控制台窗口
-- [x] 生产级改造（见 [docs/development-plan.md](docs/development-plan.md)）：规范门禁、测试与 CI、安全加固、自动更新、服务自管理、设置页、错误恢复、性能基线、最终验收（T0.1~T6.2 全部完成，见 [docs/final-acceptance.md](docs/final-acceptance.md)）
+- [x] 生产级改造（见 docs/development-plan.md）：规范门禁、测试与 CI、安全加固、自动更新、服务自管理、设置页、错误恢复、性能基线、最终验收（T0.1~T6.2 全部完成，见 docs/final-acceptance.md）
 - [ ] 安装包签名（无证书，见 SECURITY.md 的 SHA256 核验指引）
 - [ ] 多会话窗口 / 独立小窗模式
 
