@@ -49,6 +49,10 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // 自动更新：校验走 ed25519 签名（公钥在 tauri.conf.json plugins.updater）。
+        // 检查动作由壳页在合适时机触发（T5.4 设置页/启动后延时可自行决定，插件本身只提供能力）。
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         // 单实例：托盘常驻应用，重复启动时聚焦已有窗口而不是开第二个进程
         // （否则新旧实例会争夺全局快捷键 Ctrl+Shift+D，注册失败并弹出错误）
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
