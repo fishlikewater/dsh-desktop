@@ -3,7 +3,7 @@
   "name": "08-16-t4-1-updater",
   "title": "T4.1 自动更新（updater）",
   "description": "",
-  "status": "in_progress",
+  "status": "review",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-b5e26995ea07c866"
+    "revision": 3,
+    "operation_id": "task-review-6330a75f3773c034"
   }
 }
