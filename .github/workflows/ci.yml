@@ -36,6 +36,12 @@ jobs:
       - name: 设置默认 gnu 工具链
         run: rustup default stable-x86_64-pc-windows-gnu
 
+      - name: 安装 gnu 工具链组件（rustfmt/clippy）
+        # dtolnay action 的 components 装在默认 host 工具链上，而 rustup default
+        # 已切到 gnu；必须给 gnu 工具链单独补装，否则 cargo fmt/clippy 报
+        # "not installed for the toolchain"
+        run: rustup component add rustfmt clippy --toolchain stable-x86_64-pc-windows-gnu
+
       - name: 生成 gnu 链接器配置（.cargo/config.toml）
         run: node scripts/setup-gnu-linker.mjs
 
