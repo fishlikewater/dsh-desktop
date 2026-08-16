@@ -3,14 +3,14 @@
   "name": "08-16-t3-2-smoke",
   "title": "T3.2 端到端冒烟脚本入库",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
   "creator": "zhangxiang",
   "assignee": "main",
   "createdAt": "2026-08-16",
-  "completedAt": null,
+  "completedAt": "2026-08-16",
   "commit": null,
   "subtasks": [],
   "children": [],
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-e76c73cdcf058a8a"
+    "revision": 5,
+    "operation_id": "task-save-0e4b8dce9d194b4dad8952f4cb41aa61"
   }
 }
