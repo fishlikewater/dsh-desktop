@@ -51,6 +51,8 @@ pub fn watch_settings_theme(app: &AppHandle) {
     let Some(dir) = path.parent() else { return };
     let Some(target) = path.file_name() else { return };
     let target_name = target.to_string_lossy().into_owned();
+    // 闭包内按文件名过滤；外层日志复用同名变量（闭包 move 后不可再借用）
+    let filter_name = target_name.clone();
 
     // 应用运行期间 watcher 必须常驻：泄漏进静态区（生命周期与进程一致），
     // 避免 Drop 时停止监听线程。
@@ -64,7 +66,7 @@ pub fn watch_settings_theme(app: &AppHandle) {
         // rename 事件的 paths 是最终路径（settings.yaml），临时文件 .tmp 不匹配
         let hit = event.paths.iter().any(|p| {
             p.file_name()
-                .map(|n| n.to_string_lossy() == target_name.as_str())
+                .map(|n| n.to_string_lossy() == filter_name.as_str())
                 .unwrap_or(false)
         });
         if !hit {
@@ -75,13 +77,17 @@ pub fn watch_settings_theme(app: &AppHandle) {
             return;
         }
         last_emit = now;
+        log::debug!(target: "theme", "settings.yaml 变化 -> emit {THEME_FILE_CHANGED_EVENT}");
         let _ = app.emit(THEME_FILE_CHANGED_EVENT, ());
     }) else {
+        log::warn!(target: "theme", "创建 settings.yaml watcher 失败，主题同步降级为壳页 30s 兜底轮询");
         return;
     };
-    let Ok(_) = watcher.watch(dir, RecursiveMode::NonRecursive) else {
+    if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
+        log::warn!(target: "theme", "监听 {} 失败: {e}，主题同步降级为壳页 30s 兜底轮询", path.display());
         return;
-    };
+    }
     // 事件回调运行在 notify 独立线程，app 克隆可跨线程使用
     let _ = WATCHER.set(watcher);
+    log::info!(target: "theme", "已监听主题文件 {}（文件名过滤 {target_name}）", path.display());
 }

@@ -1,0 +1,7 @@
+{"file": "src-tauri/Cargo.toml", "reason": "新增 tauri-plugin-log 与 log 依赖"}
+{"file": "src-tauri/src/logging.rs", "reason": "日志插件初始化（文件轮转 + debug stdout）"}
+{"file": "src-tauri/src/lib.rs", "reason": "注册日志插件；快捷键/单实例审计日志"}
+{"file": "src-tauri/src/config.rs", "reason": "eprintln 替换为 log::warn"}
+{"file": "src-tauri/src/tray.rs", "reason": "eprintln 替换；托盘事件审计日志"}
+{"file": "src-tauri/src/theme.rs", "reason": "watcher 启动/事件审计日志"}
+{"file": "src-tauri/src/window.rs", "reason": "窗口创建/关闭请求审计日志"}

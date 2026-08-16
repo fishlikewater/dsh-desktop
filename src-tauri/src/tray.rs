@@ -51,7 +51,10 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
-            "show" => show_main_window(app),
+            "show" => {
+                log::debug!(target: "tray", "menu: show");
+                show_main_window(app);
+            }
             "autostart" => {
                 let mgr = app.autolaunch();
                 let target = !mgr.is_enabled().unwrap_or(false);
@@ -62,19 +65,24 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 };
                 match result {
                     Ok(()) => {
+                        log::info!(target: "tray", "开机自启已切换 -> {target}");
                         let _ = autostart_handle.set_checked(target);
                     }
-                    Err(e) => eprintln!("切换开机自启失败: {e}"),
+                    Err(e) => log::error!(target: "tray", "切换开机自启失败: {e}"),
                 }
             }
             "notify" => {
+                log::debug!(target: "tray", "menu: notify");
                 notify(
                     app.clone(),
                     "DSH Desktop".to_string(),
                     "通知通道工作正常 ✓".to_string(),
                 );
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                log::info!(target: "tray", "menu: quit");
+                app.exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {

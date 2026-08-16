@@ -20,7 +20,7 @@ pub fn dsh_url() -> Url {
         Ok(v) if !v.trim().is_empty() => match Url::parse(v.trim()) {
             Ok(u) if u.has_host() && u.scheme() == "http" => u,
             _ => {
-                eprintln!("DSH_URL 无效（需 http://host:port），使用默认 {DEFAULT_DSH_URL}");
+                log::warn!(target: "config", "DSH_URL 无效（需 http://host:port），使用默认 {DEFAULT_DSH_URL}");
                 fallback()
             }
         },

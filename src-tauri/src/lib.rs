@@ -19,20 +19,24 @@ fn setup_global_shortcut(app: &tauri::AppHandle) {
     );
     if let Err(e) = app.global_shortcut().on_shortcut(shortcut, |app, _sc, event| {
         if event.state() == ShortcutState::Pressed {
+            log::info!(target: "shortcut", "Ctrl+Shift+D pressed -> show main window");
             window::show_main_window(app);
         }
     }) {
-        eprintln!("注册全局快捷键回调失败: {e}");
+        log::error!(target: "shortcut", "注册全局快捷键回调失败: {e}");
     }
     if let Err(e) = app.global_shortcut().register(shortcut) {
         // 快捷键可能被其他应用占用，此时仅告警，不影响壳层运行
-        eprintln!("注册全局快捷键 Ctrl+Shift+D 失败: {e}");
+        log::warn!(target: "shortcut", "注册全局快捷键 Ctrl+Shift+D 失败: {e}");
+    } else {
+        log::info!(target: "shortcut", "全局快捷键 Ctrl+Shift+D 已注册");
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(logging::init().build())
         .invoke_handler(tauri::generate_handler![
             tray::notify,
             window::work_area,
@@ -48,9 +52,11 @@ pub fn run() {
         // 单实例：托盘常驻应用，重复启动时聚焦已有窗口而不是开第二个进程
         // （否则新旧实例会争夺全局快捷键 Ctrl+Shift+D，注册失败并弹出错误）
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            log::info!(target: "app", "second instance detected -> focus existing window");
             window::show_main_window(app);
         }))
         .setup(|app| {
+            log::info!(target: "app", "DSH Desktop starting, DSH_URL={}", dsh_url());
             // 壳页入口（自定义标题栏 + iframe 嵌入 DSH GUI），服务地址经 ?dsh= 传入
             let url: Url = dsh_url();
             let encoded: String = url
@@ -74,6 +80,7 @@ pub fn run() {
         // 关闭窗口时最小化到托盘，应用常驻后台
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                log::info!(target: "window", "close requested -> hide to tray");
                 let _ = window.hide();
                 api.prevent_close();
             }

@@ -73,6 +73,7 @@ pub fn create_main_window(
     // 显式设置初始尺寸（不依赖 builder 的 inner_size 传递，
     // 实测某些组合下 tao 会以默认尺寸创建窗口）。
     let _ = window.set_size(PhysicalSize::new(init_w, init_h));
+    log::info!(target: "window", "主窗口创建完成 {init_w}x{init_h}（工作区 {wa_w}x{wa_h}）");
     // 窗口显示后居中：隐藏窗口上 set_position 无效，壳页 show() 时机不定，
     // 用固定延迟尝试（窗口通常 1.5s 内显示；5s 兜底场景由第二次尝试覆盖）。
     {
