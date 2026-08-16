@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'sha256-YRDZ2hLpgrOnblqbAcsxlUiJHRnD3mmPrGTo1+As7Do='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:*"
+      "csp": "default-src 'self'; script-src 'self' 'sha256-mLX1THa8jiR0dp4Z00aeYaXgBpnJR8ZHPwXW+rXyQdg='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:*"
     }
   },
   "plugins": {
@@ -33,4 +33,5 @@
     "longDescription": "把 DeepSeek Harness Web GUI 包装为 Windows 桌面应用，提供托盘常驻、全局快捷键、系统通知等桌面能力。"
   }
 }
+
 

@@ -24,6 +24,8 @@
         --err-fg: #dc2626;
         --btn-bg: #d9645a;
         --btn-bg-hover: #c9554a;
+        --accent: #d9645a;
+        --accent-hover: #c9554a;
         --panel-bg: #f7f8fa;
       }
       /* ===== DSH 主题同步（外观设置在 DSH GUI 里修改，持久化于 ~/.dsh/settings.yaml
@@ -47,6 +49,8 @@
         --err-fg: #f87171;
         --btn-bg: #d9645a;
         --btn-bg-hover: #e27266;
+        --accent: #d9645a;
+        --accent-hover: #e27266;
         --panel-bg: #232528;
       }
       @media (prefers-color-scheme: dark) {
@@ -68,6 +72,8 @@
           --err-fg: #f87171;
           --btn-bg: #d9645a;
           --btn-bg-hover: #e27266;
+          --accent: #d9645a;
+          --accent-hover: #e27266;
           --panel-bg: #232528;
         }
       }
@@ -177,6 +183,9 @@
         cursor: pointer;
       }
       .card button:hover { background: var(--btn-bg-hover); }
+      .card button.primary { background: var(--accent); }
+      .card button.primary:hover { background: var(--accent-hover); }
+      .card button:disabled { opacity: 0.6; cursor: default; }
       .err { margin-top: 12px; font-size: 12px; color: var(--err-fg); min-height: 16px; }
       /* ===== 自绘边缘 resize 热区（替代系统 WS_THICKFRAME 隐藏边框）===== */
       .resize-h {
@@ -238,6 +247,7 @@
           <p id="target-line">请先运行 <code>dsh</code> 启动服务</p>
           <div class="status"><span class="dot"></span><span id="status-text">正在检测服务…</span></div>
           <button id="retry">立即重试</button>
+          <button id="service-start" class="primary">启动 DSH 服务</button>
           <div class="err" id="err"></div>
         </div>
       </div>
@@ -486,6 +496,28 @@
         errEl.textContent = "";
         statusText.textContent = "正在检测服务…";
         tick();
+      });
+
+      // ===== 拉起 DSH 服务（T5.1：方案 B 纯拉起，不捆绑 sidecar）=====
+      const startBtn = document.getElementById("service-start");
+      startBtn.addEventListener("click", async function () {
+        startBtn.disabled = true;
+        startBtn.textContent = "正在启动…";
+        errEl.textContent = "";
+        try {
+          const pid = await invoke("service_start");
+          if (pid === 0) {
+            errEl.textContent = "服务已在运行，正在连接…";
+          } else {
+            errEl.textContent = "已拉起 DSH 服务（pid=" + pid + "），等待就绪…";
+          }
+          // 交由 2s 轮询检测到服务后自动进入
+        } catch (e) {
+          errEl.textContent = String(e);
+        } finally {
+          startBtn.disabled = false;
+          startBtn.textContent = "启动 DSH 服务";
+        }
       });
       tick();
 

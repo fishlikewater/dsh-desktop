@@ -2,6 +2,7 @@
 
 mod config;
 mod logging;
+mod service;
 mod theme;
 mod tray;
 mod window;
@@ -40,7 +41,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             tray::notify,
             window::work_area,
-            theme::theme_preference
+            theme::theme_preference,
+            service::service_start
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
