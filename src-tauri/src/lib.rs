@@ -3,6 +3,7 @@
 mod config;
 mod logging;
 mod service;
+mod settings;
 mod theme;
 mod tray;
 mod window;
@@ -43,7 +44,11 @@ pub fn run() {
             window::work_area,
             theme::theme_preference,
             service::service_start,
-            service::service_stop
+            service::service_stop,
+            settings::autostart_state,
+            settings::autostart_toggle,
+            settings::update_check,
+            settings::open_log_dir
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

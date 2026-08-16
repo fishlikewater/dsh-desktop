@@ -14,6 +14,29 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 - `theme`：`parse_theme_preference`（正常/引号/缺失段/未知值/损坏/空白/多段，9 例）
 - `window`：`initial_window_size`（大桌面/小桌面/中等/异常回退/设计不变量，5 例）
 
+### ⚠️ windows-gnu 测试崩溃（0xc0000139）与规避规则
+
+本机工具链为 `stable-x86_64-pc-windows-gnu`（rustc 1.94~1.95 及 beta 均可复现）。
+在该工具链下，**tauri 项目的 test 二进制**存在链接产物缺陷，进程加载即退出
+（0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND）。已二分确认的触发形态（任一即崩）：
+
+1. **lib 单测中出现 `std::process::Child` 类型的 static**
+   （如 `static X: Mutex<Option<Child>>`，换成 `u32` pid 即恢复）；
+2. **tauri async command**（`#[tauri::command] pub async fn ...`，
+   改用同步 command + `tauri::async_runtime::block_on` 即恢复）；
+3. **集成测试（tests/）引用 lib crate**（任意符号，必崩）；
+4. 部分 fs/env/PathBuf API 的测试代码（temp_dir/fs 写入/PathBuf 构造等）。
+
+**项目内规避约定**：
+
+- 测试只用"安全"内容：纯逻辑、字符串、数学断言（现有 23 例均合规）；
+- 进程句柄一律存 pid（u32），禁止 `Child` 类型 static；
+- command 一律同步，异步 API 用 `block_on` 包装；
+- 不写引用 lib crate 的集成测试（tests/ 目录不使用）；
+- service 模块逻辑无自动化单测，以手工冒烟验证（T5.1 假 dsh 拉起/停止实测）。
+
+新增测试时若 `cargo test --lib` 突然 0xc0000139，先按上述四条回查新增内容。
+
 ## 2. 静态检查
 
 ```bash

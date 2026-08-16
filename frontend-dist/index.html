@@ -187,6 +187,80 @@
       .card button.primary:hover { background: var(--accent-hover); }
       .card button:disabled { opacity: 0.6; cursor: default; }
       .err { margin-top: 12px; font-size: 12px; color: var(--err-fg); min-height: 16px; }
+      /* ===== 设置弹层（T5.4）===== */
+      #settings-modal {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        background: rgba(0, 0, 0, 0.25);
+        align-items: center;
+        justify-content: center;
+      }
+      #settings-modal.show { display: flex; }
+      .settings-card { width: 420px; max-width: calc(100% - 48px); }
+      .settings-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .settings-head h1 { font-size: 18px; }
+      .settings-head button {
+        border: none;
+        background: none;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        color: var(--muted);
+        padding: 4px 8px;
+        border-radius: 6px;
+      }
+      .settings-head button:hover { background: var(--hover); color: var(--fg); }
+      .settings-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 0;
+        border-top: 1px solid var(--card-border);
+      }
+      .settings-row .label { width: 72px; flex: none; font-size: 13px; color: var(--muted); }
+      .settings-row code { font-size: 12px; background: var(--code-bg); padding: 3px 8px; border-radius: 5px; }
+      .settings-row .hint { font-size: 11px; color: var(--muted); flex: 1; }
+      .settings-row .mini {
+        padding: 6px 14px;
+        font-size: 12px;
+        color: var(--fg);
+        background: var(--panel-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .settings-row .mini:hover { background: var(--hover); }
+      .settings-row .mini:disabled { opacity: 0.6; cursor: default; }
+      .switch { position: relative; display: inline-block; width: 38px; height: 20px; flex: none; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch .track {
+        position: absolute;
+        inset: 0;
+        background: var(--card-border);
+        border-radius: 10px;
+        transition: background 0.15s;
+        cursor: pointer;
+      }
+      .switch .track::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.15s;
+      }
+      .switch input:checked + .track { background: var(--accent); }
+      .switch input:checked + .track::after { transform: translateX(18px); }
       /* ===== 自绘边缘 resize 热区（替代系统 WS_THICKFRAME 隐藏边框）===== */
       .resize-h {
         position: absolute;
@@ -212,6 +286,13 @@
       </svg>
       <span id="app-title">DSH Desktop</span>
       <div id="drag-region"></div>
+      <button class="win-btn" id="btn-settings" title="设置" aria-label="设置">
+        <svg viewBox="0 0 10 10">
+          <circle cx="5" cy="5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.1"/>
+          <path d="M5 0.8 V2.2 M5 7.8 V9.2 M0.8 5 H2.2 M7.8 5 H9.2 M1.9 1.9 L2.9 2.9 M7.1 7.1 L8.1 8.1 M8.1 1.9 L7.1 2.9 M2.9 7.1 L1.9 8.1"
+            stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+        </svg>
+      </button>
       <button class="win-btn" id="btn-min" title="最小化" aria-label="最小化">
         <svg viewBox="0 0 10 10"><rect x="0" y="4.5" width="10" height="1"/></svg>
       </button>
@@ -249,6 +330,33 @@
           <button id="retry">立即重试</button>
           <button id="service-start" class="primary">启动 DSH 服务</button>
           <div class="err" id="err"></div>
+        </div>
+      </div>
+      <!-- 设置弹层（T5.4） -->
+      <div id="settings-modal">
+        <div class="card settings-card">
+          <div class="settings-head">
+            <h1>设置</h1>
+            <button id="settings-close" title="关闭" aria-label="关闭">×</button>
+          </div>
+          <div class="settings-row">
+            <span class="label">服务地址</span>
+            <code id="settings-url"></code>
+            <span class="hint">启动时读取（环境变量/配置文件），修改后需重启应用</span>
+          </div>
+          <div class="settings-row">
+            <span class="label">开机自启</span>
+            <label class="switch"><input type="checkbox" id="settings-autostart"><span class="track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="label">自动更新</span>
+            <button id="settings-update-check" class="mini">检查更新</button>
+            <span class="hint" id="settings-update-result"></span>
+          </div>
+          <div class="settings-row">
+            <span class="label">日志目录</span>
+            <button id="settings-open-logs" class="mini">打开</button>
+          </div>
         </div>
       </div>
     </div>
@@ -519,6 +627,59 @@
         if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
         frame.src = "about:blank";
         tick();
+      });
+
+      // ===== 设置弹层（T5.4）=====
+      const settingsModal = document.getElementById("settings-modal");
+      const settingsUrl = document.getElementById("settings-url");
+      const settingsAuto = document.getElementById("settings-autostart");
+      const settingsUpdateBtn = document.getElementById("settings-update-check");
+      const settingsUpdateResult = document.getElementById("settings-update-result");
+      const settingsOpenLogs = document.getElementById("settings-open-logs");
+
+      function openSettings() {
+        settingsUrl.textContent = DSH_URL;
+        settingsUpdateResult.textContent = "";
+        // 读取开机自启状态
+        invoke("autostart_state").then(function (v) {
+          settingsAuto.checked = !!v;
+        }).catch(function () {});
+        settingsModal.classList.add("show");
+      }
+      function closeSettings() { settingsModal.classList.remove("show"); }
+      document.getElementById("btn-settings").addEventListener("click", openSettings);
+      document.getElementById("settings-close").addEventListener("click", closeSettings);
+      settingsModal.addEventListener("click", function (e) {
+        if (e.target === settingsModal) closeSettings(); // 点击遮罩关闭
+      });
+      // 托盘"设置…"入口
+      window.__TAURI__.event.listen("open-settings", function () { openSettings(); });
+
+      settingsAuto.addEventListener("change", function () {
+        invoke("autostart_toggle").then(function (v) {
+          settingsAuto.checked = !!v;
+        }).catch(function (e) {
+          settingsAuto.checked = !settingsAuto.checked;
+          settingsUpdateResult.textContent = String(e);
+        });
+      });
+
+      settingsUpdateBtn.addEventListener("click", function () {
+        settingsUpdateBtn.disabled = true;
+        settingsUpdateResult.textContent = "检查中…";
+        invoke("update_check").then(function (msg) {
+          settingsUpdateResult.textContent = msg;
+        }).catch(function (e) {
+          settingsUpdateResult.textContent = String(e);
+        }).finally(function () {
+          settingsUpdateBtn.disabled = false;
+        });
+      });
+
+      settingsOpenLogs.addEventListener("click", function () {
+        invoke("open_log_dir").catch(function (e) {
+          settingsUpdateResult.textContent = String(e);
+        });
       });
 
       // ===== 拉起 DSH 服务（T5.1：方案 B 纯拉起，不捆绑 sidecar）=====

@@ -1,8 +1,9 @@
-//! 托盘模块：常驻托盘图标与菜单（显示窗口/开机自启/服务启停/测试通知/退出）。
+//! 托盘模块：常驻托盘图标与菜单（显示窗口/开机自启/服务启停/设置/测试通知/退出）。
 
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
@@ -17,7 +18,7 @@ pub(crate) fn notify(app: tauri::AppHandle, title: String, body: String) {
 }
 
 /// 构建系统托盘：左键单击显示窗口，菜单含「显示主窗口」「开机自启」「启动/停止 DSH 服务」
-/// 「测试通知」「退出」
+/// 「设置…」「测试通知」「退出」
 pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let auto_enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
@@ -31,6 +32,7 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     )?;
     let svc_start_item = MenuItem::with_id(app, "svc-start", "启动 DSH 服务", true, None::<&str>)?;
     let svc_stop_item = MenuItem::with_id(app, "svc-stop", "停止 DSH 服务", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let notify_item = MenuItem::with_id(app, "notify", "发送测试通知", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
@@ -43,6 +45,7 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             &svc_start_item,
             &svc_stop_item,
             &sep,
+            &settings_item,
             &notify_item,
             &quit_item,
         ],
@@ -102,6 +105,12 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                         Err(e) => e,
                     },
                 );
+            }
+            "settings" => {
+                log::info!(target: "tray", "menu: settings");
+                show_main_window(app);
+                // 壳页监听该事件后打开设置弹层
+                let _ = app.emit(crate::config::OPEN_SETTINGS_EVENT, ());
             }
             "notify" => {
                 log::debug!(target: "tray", "menu: notify");

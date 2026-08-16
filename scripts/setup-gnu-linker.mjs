@@ -34,6 +34,12 @@ const escaped = LINKER.replace(/\\/g, "\\\\");
 
 const toml = `# 本文件由 scripts/setup-gnu-linker.mjs 自动生成，请勿手动修改。
 # 若需自定义，修改脚本或临时覆盖本文件（构建脚本会在 npm scripts 中重新生成）。
+[env]
+# tauri 官方 workaround：防止 windows-gnu 下 cargo test 偶发
+# STATUS_ENTRYPOINT_NOT_FOUND（0xc0000139）崩溃
+# 参考 https://github.com/tauri-apps/tauri/pull/4383#issuecomment-1212221864
+__TAURI_WORKSPACE__ = "true"
+
 [target.x86_64-pc-windows-gnu]
 linker = "${escaped}"
 `;

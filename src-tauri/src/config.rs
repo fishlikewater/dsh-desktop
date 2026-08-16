@@ -15,6 +15,8 @@ pub const MAIN_WINDOW: &str = "main";
 pub const DEFAULT_DSH_URL: &str = "http://127.0.0.1:3080";
 /// 主题文件变化事件名（Rust → 壳页）
 pub const THEME_FILE_CHANGED_EVENT: &str = "theme-file-changed";
+/// 打开设置弹层事件名（托盘菜单 → 壳页）
+pub const OPEN_SETTINGS_EVENT: &str = "open-settings";
 /// 初始窗口尺寸（大桌面基准）
 pub const INITIAL_WINDOW_SIZE: (u32, u32) = (1280, 840);
 /// 窗口最小尺寸（与壳页 MIN_W/MIN_H 同步）

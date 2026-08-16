@@ -1,0 +1,4 @@
+{"file": "src-tauri/src/settings.rs", "reason": "设置 command 集（autostart/update_check/open_log_dir）", "type": "planned-file"}
+{"file": "src-tauri/src/lib.rs", "reason": "注册 settings 模块与 command；托盘设置入口事件"}
+{"file": "src-tauri/src/tray.rs", "reason": "托盘菜单新增设置项"}
+{"file": "frontend-dist/index.html", "reason": "设置弹层 UI + 标题栏齿轮入口"}
