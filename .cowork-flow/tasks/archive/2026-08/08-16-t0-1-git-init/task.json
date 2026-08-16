@@ -3,14 +3,14 @@
   "name": "08-16-t0-1-git-init",
   "title": "T0.1 git 初始化与仓库整洁",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "priority": "P2",
   "creator": "zhangxiang",
   "assignee": "main",
   "createdAt": "2026-08-16",
-  "completedAt": null,
+  "completedAt": "2026-08-16",
   "commit": null,
   "subtasks": [],
   "children": [],
@@ -22,7 +22,7 @@
   },
   "_state": {
     "schema_version": 1,
-    "revision": 2,
-    "operation_id": "task-start-347b40f9af8aa1ed"
+    "revision": 5,
+    "operation_id": "task-save-3264afe959374414bf73e6b52f9c26f0"
   }
 }
