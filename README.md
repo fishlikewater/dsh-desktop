@@ -44,8 +44,14 @@ npm install
 # 开发模式：编译并弹出桌面窗口
 npm run dev
 
-# 代码检查（clippy + 前端脚本语法）
+# 代码检查（clippy + 前端脚本语法 + CSP hash 一致性）
 npm run check
+
+# 单元测试（Rust）
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+# 端到端冒烟（CDP，需 debug 构建 + DSH 服务在线；详见 docs/testing.md）
+npm run smoke
 
 # 生成安装包（NSIS）
 npm run build
@@ -106,6 +112,15 @@ dsh-desktop/
   浅色背景 #FFFFFF/侧边栏 #F2F3F3）；标题栏为**不透明纯色**（修复 Mica/backdrop 导致的顶部
   透明-暗色闪烁）；应用图标为 DSH 鲸鱼 logo（浅灰圆角底 + 黑色鲸鱼，`src-tauri/icons/app-icon.svg`）
 - Codex 功能对照评估见 [docs/codex-features-evaluation.md](docs/codex-features-evaluation.md)
+
+## 持续集成（CI）
+
+`.github/workflows/ci.yml` 定义全链路流水线：fmt 检查 → clippy → 单测 → 前端检查 →
+debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
+
+> **当前状态**：仓库尚无 GitHub 远程，workflow 未实际触发过。推送到 GitHub 后
+> 即自动启用；本地等价验证命令序列见 [docs/testing.md](docs/testing.md)。
+> 端到端冒烟依赖本机 DSH 服务与 `~/.dsh` 配置，不作为 CI 步骤（本地 `npm run smoke` 承担）。
 
 ## 故障排查
 

@@ -23,7 +23,9 @@ pub const MIN_WINDOW_SIZE: (u32, u32) = (860, 620);
 /// 壳层配置文件路径：%APPDATA%\com.dsh.desktop\config.json
 pub fn shell_config_path() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
-    Path::new(&appdata).join("com.dsh.desktop").join("config.json")
+    Path::new(&appdata)
+        .join("com.dsh.desktop")
+        .join("config.json")
 }
 
 /// 壳层配置（未知字段忽略；缺失/损坏回退默认）。
@@ -103,7 +105,10 @@ fn resolve_dsh_url(env_value: Option<&str>, config_value: Option<&str>) -> Url {
 /// 读取 DSH 服务地址：环境变量 DSH_URL > config.json dsh_url > 默认；非法值回退默认。
 pub fn dsh_url() -> Url {
     resolve_dsh_url(
-        std::env::var("DSH_URL").ok().filter(|v| !v.trim().is_empty()).as_deref(),
+        std::env::var("DSH_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .as_deref(),
         shell_config().dsh_url.as_deref(),
     )
 }
@@ -118,8 +123,16 @@ fn resolve_dsh_home(
     env_value
         .filter(|v| !v.trim().is_empty())
         .map(String::from)
-        .or_else(|| config_value.filter(|v| !v.trim().is_empty()).map(String::from))
-        .or_else(|| userprofile.filter(|v| !v.trim().is_empty()).map(String::from))
+        .or_else(|| {
+            config_value
+                .filter(|v| !v.trim().is_empty())
+                .map(String::from)
+        })
+        .or_else(|| {
+            userprofile
+                .filter(|v| !v.trim().is_empty())
+                .map(String::from)
+        })
         .unwrap_or_else(|| ".".into())
 }
 
@@ -195,7 +208,10 @@ mod tests {
 
     #[test]
     fn resolve_home_precedence() {
-        assert_eq!(resolve_dsh_home(Some("env"), Some("cfg"), Some("up")), "env");
+        assert_eq!(
+            resolve_dsh_home(Some("env"), Some("cfg"), Some("up")),
+            "env"
+        );
         assert_eq!(resolve_dsh_home(Some("  "), Some("cfg"), Some("up")), "cfg");
         assert_eq!(resolve_dsh_home(None, Some("cfg"), Some("up")), "cfg");
         assert_eq!(resolve_dsh_home(None, None, Some("up")), "up");

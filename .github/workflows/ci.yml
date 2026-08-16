@@ -1,0 +1,70 @@
+# CI 流水线：静态检查 → 单测 → 构建 → 打包
+#
+# 说明：
+# - 冒烟（scripts/smoke，CDP 端到端）依赖本机 DSH 服务（dsh CLI）与 ~/.dsh 配置，
+#   CI runner 无 dsh 安装，故不作为 CI 步骤；本地以 `npm run smoke` 验证
+#   （见 docs/testing.md）。
+# - 工具链为 windows-gnu（项目决策），链接器配置由 scripts/setup-gnu-linker.mjs 生成。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Rust 工具链（windows-gnu）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+          components: rustfmt, clippy
+
+      - name: 设置默认 gnu 工具链
+        run: rustup default stable-x86_64-pc-windows-gnu
+
+      - name: 生成 gnu 链接器配置（.cargo/config.toml）
+        run: node scripts/setup-gnu-linker.mjs
+
+      - name: Rust 构建缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 格式检查
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      - name: 静态检查（clippy -D warnings + 前端脚本/CSP hash）
+        run: npm run check
+
+      - name: 单元测试
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Debug 构建
+        run: cargo build --manifest-path src-tauri/Cargo.toml
+
+      - name: Release 构建 + NSIS 打包
+        run: npm run build
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-desktop-installer
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

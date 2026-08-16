@@ -13,16 +13,16 @@ use config::dsh_url;
 
 /// 注册全局快捷键：Ctrl+Shift+D 唤起主窗口
 fn setup_global_shortcut(app: &tauri::AppHandle) {
-    let shortcut = Shortcut::new(
-        Some(Modifiers::CONTROL | Modifiers::SHIFT),
-        Code::KeyD,
-    );
-    if let Err(e) = app.global_shortcut().on_shortcut(shortcut, |app, _sc, event| {
-        if event.state() == ShortcutState::Pressed {
-            log::info!(target: "shortcut", "Ctrl+Shift+D pressed -> show main window");
-            window::show_main_window(app);
-        }
-    }) {
+    let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyD);
+    if let Err(e) = app
+        .global_shortcut()
+        .on_shortcut(shortcut, |app, _sc, event| {
+            if event.state() == ShortcutState::Pressed {
+                log::info!(target: "shortcut", "Ctrl+Shift+D pressed -> show main window");
+                window::show_main_window(app);
+            }
+        })
+    {
         log::error!(target: "shortcut", "注册全局快捷键回调失败: {e}");
     }
     if let Err(e) = app.global_shortcut().register(shortcut) {

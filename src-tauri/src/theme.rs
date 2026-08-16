@@ -72,16 +72,19 @@ fn try_start_theme_watcher(app: &AppHandle) -> bool {
     use notify::{RecursiveMode, Watcher};
 
     let path = theme_settings_path();
-    let Some(dir) = path.parent() else { return false };
-    let Some(target) = path.file_name() else { return false };
+    let Some(dir) = path.parent() else {
+        return false;
+    };
+    let Some(target) = path.file_name() else {
+        return false;
+    };
     let target_name = target.to_string_lossy().into_owned();
     // 闭包内按文件名过滤；外层日志复用同名变量（闭包 move 后不可再借用）
     let filter_name = target_name.clone();
 
     // 应用运行期间 watcher 必须常驻：泄漏进静态区（生命周期与进程一致），
     // 避免 Drop 时停止监听线程。
-    static WATCHER: std::sync::OnceLock<notify::RecommendedWatcher> =
-        std::sync::OnceLock::new();
+    static WATCHER: std::sync::OnceLock<notify::RecommendedWatcher> = std::sync::OnceLock::new();
     if WATCHER.get().is_some() {
         return true; // 已在监听
     }
@@ -126,17 +129,26 @@ mod tests {
 
     #[test]
     fn parses_dark() {
-        assert_eq!(parse_theme_preference("ui-theme:\n  preference: dark\n"), "dark");
+        assert_eq!(
+            parse_theme_preference("ui-theme:\n  preference: dark\n"),
+            "dark"
+        );
     }
 
     #[test]
     fn parses_quoted_value() {
-        assert_eq!(parse_theme_preference("ui-theme:\n  preference: \"system\"\n"), "system");
+        assert_eq!(
+            parse_theme_preference("ui-theme:\n  preference: \"system\"\n"),
+            "system"
+        );
     }
 
     #[test]
     fn defaults_light_when_section_missing() {
-        assert_eq!(parse_theme_preference("agent-default-model:\n  model: x\n"), "light");
+        assert_eq!(
+            parse_theme_preference("agent-default-model:\n  model: x\n"),
+            "light"
+        );
     }
 
     #[test]
@@ -146,7 +158,10 @@ mod tests {
 
     #[test]
     fn defaults_light_on_unknown_value() {
-        assert_eq!(parse_theme_preference("ui-theme:\n  preference: blue\n"), "light");
+        assert_eq!(
+            parse_theme_preference("ui-theme:\n  preference: blue\n"),
+            "light"
+        );
     }
 
     #[test]

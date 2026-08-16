@@ -180,7 +180,12 @@ unsafe fn work_area_ffi() -> (i32, i32, i32, i32) {
             f_win_ini: u32,
         ) -> i32;
     }
-    let mut rect = Rect { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect = Rect {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     SystemParametersInfoW(
         SPI_GETWORKAREA,
         0,
@@ -230,7 +235,15 @@ fn make_window_popup_style(hwnd: isize) {
         let new_style = (style & !(WS_CAPTION | WS_SIZEBOX)) | WS_POPUP;
         SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
         // SWP_FRAMECHANGED 强制 DWM 按新样式重绘边框/非客户区
-        SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        SetWindowPos(
+            hwnd,
+            0,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        );
     }
 }
 
@@ -336,4 +349,3 @@ mod tests {
         assert!(INITIAL_WINDOW_SIZE.1 >= MIN_WINDOW_SIZE.1);
     }
 }
-

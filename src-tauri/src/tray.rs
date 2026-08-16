@@ -34,13 +34,10 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         &[&show_item, &autostart_item, &notify_item, &quit_item],
     )?;
 
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .unwrap_or_else(|| {
-            // 兜底：1x1 透明像素，正常情况下不会走到这里
-            tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
-        });
+    let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
+        // 兜底：1x1 透明像素，正常情况下不会走到这里
+        tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+    });
 
     // 事件闭包中需要更新勾选状态，这里克隆句柄（内部 Arc 共享）
     let autostart_handle = autostart_item.clone();
@@ -58,11 +55,7 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             "autostart" => {
                 let mgr = app.autolaunch();
                 let target = !mgr.is_enabled().unwrap_or(false);
-                let result = if target {
-                    mgr.enable()
-                } else {
-                    mgr.disable()
-                };
+                let result = if target { mgr.enable() } else { mgr.disable() };
                 match result {
                     Ok(()) => {
                         log::info!(target: "tray", "开机自启已切换 -> {target}");
