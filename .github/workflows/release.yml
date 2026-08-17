@@ -123,18 +123,35 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # tauri-action 不把 .exe.sig 作为资产上传，导致其 updater JSON 路径
-      # 跳过 latest.json；这里自行上传签名并生成清单（signature = .sig 内容）。
-      - name: 上传签名并发布 latest.json（Windows）
+      # tauri-action 上传主产物；.sig 作为资产单独上传，供聚合 job
+      # （publish-updater-json）组装 latest.json 使用。
+      - name: 上传 Windows 签名（.exe.sig）
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $sig = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe.sig" | Select-Object -First 1
           if (-not $sig) { Write-Error "未找到 .exe.sig（检查 TAURI_SIGNING_PRIVATE_KEY secret 是否配置正确）"; exit 1 }
           gh release upload ${{ github.ref_name }} $sig.FullName --clobber
-          node scripts/build-latest-json.mjs
-          gh release upload ${{ github.ref_name }} latest.json --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 聚合 job：双平台构建完成后，从 Release 资产取两平台签名，
+  # 组装含 windows-x86_64 与 darwin-aarch64 的 latest.json 并上传（覆盖）。
+  publish-updater-json:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 生成 latest.json（双平台）
+        run: node scripts/build-latest-json.mjs
+        env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 上传 latest.json
+        run: gh release upload ${{ github.ref_name }} latest.json --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
