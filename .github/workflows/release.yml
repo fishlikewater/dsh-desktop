@@ -120,3 +120,19 @@ jobs:
         run: gh release upload ${{ github.ref_name }} SHA256SUMS.txt --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # tauri-action 不把 .exe.sig 作为资产上传，导致其 updater JSON 路径
+      # 跳过 latest.json；这里自行上传签名并生成清单（signature = .sig 内容）。
+      - name: 上传签名并发布 latest.json（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sig = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe.sig" | Select-Object -First 1
+          if (-not $sig) { Write-Error "未找到 .exe.sig（检查 TAURI_SIGNING_PRIVATE_KEY secret 是否配置正确）"; exit 1 }
+          gh release upload ${{ github.ref_name }} $sig.FullName --clobber
+          node scripts/build-latest-json.mjs
+          gh release upload ${{ github.ref_name }} latest.json --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
