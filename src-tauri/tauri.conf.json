@@ -29,7 +29,7 @@
     "active": true,
     "targets": ["nsis"],
     "resources": {
-      "target/release/WebView2Loader.dll": "WebView2Loader.dll"
+      "resources/WebView2Loader.dll": "WebView2Loader.dll"
     },
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "publisher": "dsh-desktop",
