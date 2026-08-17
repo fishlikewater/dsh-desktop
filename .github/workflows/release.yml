@@ -97,6 +97,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # createUpdaterArtifacts 为全局配置，mac 构建同样生成签名产物
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           projectPath: src-tauri
           tagName: v__VERSION__
