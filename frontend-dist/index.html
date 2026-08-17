@@ -225,8 +225,11 @@
         border-top: 1px solid var(--card-border);
       }
       .settings-row .label { width: 72px; flex: none; font-size: 13px; color: var(--muted); }
-      .settings-row code { font-size: 12px; background: var(--code-bg); padding: 3px 8px; border-radius: 5px; }
-      .settings-row .hint { font-size: 11px; color: var(--muted); flex: 1; }
+      .settings-row code { font-size: 12px; background: var(--code-bg); padding: 3px 8px; border-radius: 5px; flex: none; max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .settings-row .hint { font-size: 11px; color: var(--muted); flex: 1; min-width: 0; text-align: right; line-height: 1.5; }
+      /* 服务地址行：说明独立成行，避免与 URL 同排挤压 */
+      .settings-row.row-url { flex-wrap: wrap; }
+      .settings-row.row-url .hint { flex-basis: 100%; padding-left: 84px; text-align: left; }
       .settings-row .mini {
         padding: 6px 14px;
         font-size: 12px;
@@ -238,6 +241,9 @@
       }
       .settings-row .mini:hover { background: var(--hover); }
       .settings-row .mini:disabled { opacity: 0.6; cursor: default; }
+      /* 操作按钮/开关右对齐：与各行控制项纵向对齐 */
+      .settings-row .mini { margin-left: auto; }
+      .settings-row .switch { margin-left: auto; }
       .switch { position: relative; display: inline-block; width: 38px; height: 20px; flex: none; }
       .switch input { opacity: 0; width: 0; height: 0; }
       .switch .track {
@@ -286,7 +292,7 @@
       </svg>
       <span id="app-title">DSH Desktop</span>
       <div id="drag-region"></div>
-      <button class="win-btn" id="btn-settings" title="设置" aria-label="设置">
+      <button class="win-btn" id="btn-settings" title="配置" aria-label="配置">
         <svg viewBox="0 0 10 10">
           <circle cx="5" cy="5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.1"/>
           <path d="M5 0.8 V2.2 M5 7.8 V9.2 M0.8 5 H2.2 M7.8 5 H9.2 M1.9 1.9 L2.9 2.9 M7.1 7.1 L8.1 8.1 M8.1 1.9 L7.1 2.9 M2.9 7.1 L1.9 8.1"
@@ -336,10 +342,10 @@
       <div id="settings-modal">
         <div class="card settings-card">
           <div class="settings-head">
-            <h1>设置</h1>
+            <h1>配置</h1>
             <button id="settings-close" title="关闭" aria-label="关闭">×</button>
           </div>
-          <div class="settings-row">
+          <div class="settings-row row-url">
             <span class="label">服务地址</span>
             <code id="settings-url"></code>
             <span class="hint">启动时读取（环境变量/配置文件），修改后需重启应用</span>
@@ -409,6 +415,9 @@
       // setPosition 无效，show 完成后窗口已可见）。
       let centered = false;
       function showWindow() {
+        // GUI（iframe）就绪后再同步一次主题：脚本加载时 DSH 服务可能尚未
+        // 写入 settings.yaml（读到默认 light），此刻重读可覆盖首启浅色问题。
+        syncTheme();
         try {
           appWin.show().then(function () {
             if (!centered) {

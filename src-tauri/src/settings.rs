@@ -46,8 +46,11 @@ pub fn update_check(app: tauri::AppHandle) -> Result<String, String> {
         }
         Ok(None) => Ok("当前已是最新版本".into()),
         Err(e) => {
+            // 常见失败场景：Release 仍为草稿（endpoint 404）、latest.json 未签名
+            // （发布流程未配置 TAURI_SIGNING_PRIVATE_KEY）。原始错误进日志，
+            // 返回给界面的为可读中文提示。
             log::warn!(target: "settings", "检查更新失败: {e}");
-            Err(format!("检查更新失败: {e}"))
+            Err("检查更新失败：无法获取有效的更新清单（发布物尚未正式发布，或未配置签名密钥）".into())
         }
     }
 }
