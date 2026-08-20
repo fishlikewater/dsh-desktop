@@ -2,6 +2,21 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.2] - 2026-08-20
+
+### Added
+
+- 设置页显示当前应用版本（新增 `app_version` command）
+- 设置页「自动更新」：检查更新后提供独立的「更新」按钮（发现新版本时启用，点击下载安装并重启）
+
+### Fixed
+
+- 设置弹层排版：弹层相对整个窗口居中（此前仅在 iframe 内容区居中）、关闭按钮与标题垂直中心对齐、卡片内边距/行距统一、遮罩层级优化
+
+### 工程
+
+- 修复 CI：`cargo fmt --check` 门禁（settings.rs 长行断行）；Release 构建步骤注入签名密钥（createUpdaterArtifacts 强制签名，与 release.yml 对齐）
+
 ## [0.1.1] - 2026-08-20
 
 ### 新增（自动更新）
