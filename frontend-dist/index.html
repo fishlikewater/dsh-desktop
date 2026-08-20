@@ -190,38 +190,56 @@
       /* ===== 设置弹层（T5.4）===== */
       #settings-modal {
         display: none;
-        position: absolute;
+        position: fixed;
         inset: 0;
         z-index: 60;
-        background: rgba(0, 0, 0, 0.25);
+        background: rgba(0, 0, 0, 0.30);
         align-items: center;
         justify-content: center;
       }
       #settings-modal.show { display: flex; }
-      .settings-card { width: 420px; max-width: calc(100% - 48px); }
+      .settings-card {
+        width: 420px;
+        max-width: calc(100% - 48px);
+        padding: 28px 28px 24px;
+      }
       .settings-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 14px;
+        gap: 12px;
+        margin-bottom: 6px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--card-border);
       }
-      .settings-head h1 { font-size: 18px; }
+      .settings-head h1 {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0;
+        line-height: 28px; /* 与关闭按钮（28px）同高，保证垂直中心对齐 */
+      }
       .settings-head button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        margin-top: 0; /* 覆盖 .card button 的 margin-top:22px，保持垂直居中 */
+        padding: 0;
         border: none;
         background: none;
-        font-size: 20px;
+        border-radius: 6px;
+        font-size: 22px;
         line-height: 1;
         cursor: pointer;
         color: var(--muted);
-        padding: 4px 8px;
-        border-radius: 6px;
       }
       .settings-head button:hover { background: var(--hover); color: var(--fg); }
       .settings-row {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 10px 0;
+        padding: 12px 0;
         border-top: 1px solid var(--card-border);
       }
       .settings-row .label { width: 72px; flex: none; font-size: 13px; color: var(--muted); }
@@ -231,6 +249,7 @@
       .settings-row.row-url { flex-wrap: wrap; }
       .settings-row.row-url .hint { flex-basis: 100%; padding-left: 84px; text-align: left; }
       .settings-row .mini {
+        margin-top: 0; /* 覆盖 .card button 的 margin-top:22px，行内垂直居中 */
         padding: 6px 14px;
         font-size: 12px;
         color: var(--fg);
