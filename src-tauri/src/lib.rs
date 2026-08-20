@@ -48,6 +48,7 @@ pub fn run() {
             settings::autostart_state,
             settings::autostart_toggle,
             settings::update_check,
+            settings::update_install,
             settings::open_log_dir
         ])
         .plugin(tauri_plugin_dialog::init())

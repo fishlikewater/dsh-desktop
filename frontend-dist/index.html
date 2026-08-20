@@ -651,6 +651,7 @@
       const settingsUpdateBtn = document.getElementById("settings-update-check");
       const settingsUpdateResult = document.getElementById("settings-update-result");
       const settingsOpenLogs = document.getElementById("settings-open-logs");
+      let pendingUpdate = null; // update_check 发现的新版本号（有值 = 可执行「立即更新」）
 
       function openSettings() {
         settingsUrl.textContent = DSH_URL;
@@ -681,11 +682,32 @@
 
       settingsUpdateBtn.addEventListener("click", function () {
         settingsUpdateBtn.disabled = true;
+        if (pendingUpdate) {
+          settingsUpdateResult.textContent = "正在下载并安装 " + pendingUpdate + "…";
+          invoke("update_install").then(function (msg) {
+            settingsUpdateResult.textContent = msg;
+          }).catch(function (e) {
+            settingsUpdateResult.textContent = String(e);
+            pendingUpdate = null;
+            settingsUpdateBtn.textContent = "检查更新";
+          }).finally(function () {
+            settingsUpdateBtn.disabled = false;
+          });
+          return;
+        }
         settingsUpdateResult.textContent = "检查中…";
         invoke("update_check").then(function (msg) {
           settingsUpdateResult.textContent = msg;
+          if (msg.indexOf("发现新版本") === 0) {
+            pendingUpdate = msg.slice("发现新版本".length).trim();
+            settingsUpdateBtn.textContent = "立即更新";
+          } else {
+            pendingUpdate = null;
+            settingsUpdateBtn.textContent = "检查更新";
+          }
         }).catch(function (e) {
           settingsUpdateResult.textContent = String(e);
+          settingsUpdateBtn.textContent = "检查更新";
         }).finally(function () {
           settingsUpdateBtn.disabled = false;
         });

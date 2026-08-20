@@ -55,6 +55,24 @@ pub fn update_check(app: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
+/// 下载并安装新版本（「立即更新」动作）。
+/// 先重新检查，发现可用更新才执行 download_and_install，安装完成后请求重启。
+/// 同样用 block_on 同步化（windows-gnu async command 规避，见 docs/testing.md）。
+#[tauri::command]
+pub fn update_install(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| format!("更新器不可用: {e}"))?;
+    let update = tauri::async_runtime::block_on(updater.check())
+        .map_err(|e| format!("检查更新失败: {e}"))?
+        .ok_or_else(|| "当前已是最新版本".to_owned())?;
+    let version = update.version.clone();
+    tauri::async_runtime::block_on(update.download_and_install(|_, _| {}, || {}))
+        .map_err(|e| format!("下载安装失败: {e}"))?;
+    log::info!(target: "settings", "更新 v{version} 安装完成，正在重启");
+    app.request_restart();
+    Ok(format!("已更新到 v{version}，正在重启…"))
+}
+
 /// 打开日志目录到系统文件管理器（Windows：explorer；macOS：open）。
 /// 目录取自 tauri app_log_dir（Windows=%LOCALAPPDATA%\com.dsh.desktop\logs，
 /// 与 logging 插件的 LogDir 一致）。
