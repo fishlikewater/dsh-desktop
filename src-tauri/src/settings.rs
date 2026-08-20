@@ -10,6 +10,12 @@ use std::os::windows::process::CommandExt;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
+/// 返回当前应用版本（设置页展示，语义版本如 0.1.1）。
+#[tauri::command]
+pub fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// 读取开机自启状态（注册表为准）。
 #[tauri::command]
 pub fn autostart_state(app: tauri::AppHandle) -> bool {

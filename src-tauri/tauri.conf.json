@@ -11,7 +11,7 @@
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'sha256-tdgt17OLgGKhSNbM1yezWB8fOHDbGDZ+klAHFVFoowc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:*"
+      "csp": "default-src 'self'; script-src 'self' 'sha256-cGfWqjV5id3v3ydKaT1niz2eGKrrXQh8dG7o2lC0UKs='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:*"
     }
   },
   "plugins": {
