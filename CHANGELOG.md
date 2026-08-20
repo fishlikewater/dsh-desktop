@@ -2,9 +2,15 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.1] - 2026-08-20
 
-### 工程化（生产级改造，进行中，见 docs/development-plan.md）
+### 新增（自动更新）
+
+- 「检查更新」支持发现新版本后一键下载安装并重启（`update_install`：download_and_install + request_restart）
+- updater `endpoints` 指向真实仓库 `fishlikewater/dsh-desktop`（不再依赖 CI 动态替换占位）
+- 新增 CDP 冒烟 `scripts/smoke/updater-check.mjs`（验证 `update_check` 端到端可达）
+
+### 工程化（生产级改造，见 docs/development-plan.md）
 
 - T0.1 初始化 git 仓库与提交基线；T0.2 MIT 许可证、CHANGELOG、SECURITY 文档
 - T0.3 代码规范门禁（`npm run check`：clippy `-D warnings` + 前端脚本/CSP hash 检查）
@@ -30,6 +36,7 @@
 - 停止服务失败时保留 pid 记录（可重试）
 - 日志轮转封顶（KeepSome(5)，约 6MB 上限，避免无限增长）
 - 修复：无 DSH_HOME 环境变量启动时主题路径解析缺 .dsh（默认数据目录应为 ~/.dsh），标题栏不随主题变化
+- 自动更新：updater endpoint 从 OWNER/REPO 占位改为真实仓库；设置弹层检查更新支持发现新版本后一键「立即更新」下载安装并重启
 
 ## [0.1.0] - 2026-08-16
 

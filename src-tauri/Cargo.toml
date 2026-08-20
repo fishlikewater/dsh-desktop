@@ -1,6 +1,6 @@
 [package]
 name = "dsh-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "DSH 桌面壳：把 DeepSeek Harness Web GUI 包装为 Windows 桌面应用"
 authors = ["dsh-desktop"]
 edition = "2021"
