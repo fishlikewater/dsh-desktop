@@ -2,6 +2,17 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.3] - 2026-08-20
+
+### Fixed
+
+- macOS 产物 ad-hoc 代码签名：修复 Apple Silicon（M 系列）安装后「已损坏，无法打开」问题
+  （CI 构建后对 .app 递归 `codesign -`，重建 dmg / updater 包并重签 .sig 后覆盖上传）
+
+### 工程
+
+- release.yml 支持 `workflow_dispatch` 手动触发
+
 ## [0.1.2] - 2026-08-20
 
 ### Added

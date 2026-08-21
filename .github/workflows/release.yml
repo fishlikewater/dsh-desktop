@@ -4,7 +4,9 @@
 # - 触发：git push origin main --tags（docs/release-process.md 发版流程）
 # - Windows：windows-gnu 工具链 + NSIS（与 ci.yml 一致），tauri-action 建/更 Release
 #   草稿并上传签名 latest.json（updater 清单）；另附 SHA256SUMS.txt
-# - macOS：Apple Silicon（aarch64-apple-darwin）+ dmg/app，未签名/未公证
+# - macOS：Apple Silicon（aarch64-apple-darwin）+ dmg/app；构建后对该 .app 做 ad-hoc
+#   签名（codesign -，无需证书），重建 dmg / updater 包并重签 .sig 后覆盖上传
+#   （Apple Silicon 原生二进制无签名时 macOS 报「已损坏，无法打开」）
 # - updater endpoint 占位 OWNER/REPO 由 scripts/patch-updater-endpoint.mjs
 #   在构建前替换为真实仓库（$GITHUB_REPOSITORY）
 # - 签名私钥经 secret TAURI_SIGNING_PRIVATE_KEY 注入（内容为本地 .tauri/dsh-desktop.key，
@@ -15,6 +17,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -107,6 +110,53 @@ jobs:
           prerelease: false
           args: --bundles ${{ matrix.bundles }}
           includeUpdaterJson: ${{ matrix.updater_json }}
+
+      # macOS ad-hoc 签名：Tauri bundler 不支持 ad-hoc（需证书 identity），
+      # 构建后对本地产物递归 codesign -（arm64 无签名无法启动 -> 报「已损坏」），
+      # 重建 updater tar.gz 并用同一密钥重签 .sig、重建 dmg，再覆盖上传。
+      - name: macOS ad-hoc 签名并重建产物
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          set -euxo pipefail
+          APP="$(find src-tauri/target -type d -name 'DSH Desktop.app' -print -quit)"
+          [ -n "$APP" ] || { echo "未找到 DSH Desktop.app"; exit 1; }
+          APP_DIR="$(dirname "$APP")"
+          ROOT="$(dirname "$APP_DIR")"   # bundle 根目录
+          VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version)")"
+
+          # 1) ad-hoc 签名整个 .app（--force 重签内部所有二进制/框架）
+          codesign --force --deep --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict "$APP" || { echo "codesign verify FAILED"; exit 1; }
+          codesign -dv "$APP" 2>&1 | sed -n 's/.*Signature=\(.*\)/signature: \1/p'
+
+          # 2) 重建 updater app.tar.gz（tar 顶层为 .app 目录，与 tauri updater_bundle 一致）
+          cd "$APP_DIR"
+          rm -f "DSH Desktop.app.tar.gz" "DSH Desktop.app.tar.gz.sig"
+          tar -czf "DSH Desktop.app.tar.gz" "DSH Desktop.app"
+          # 3) 重新生成 .sig（tar 内容已变化，原 sig 失效）
+          npx tauri signer sign -f "DSH Desktop.app.tar.gz"
+
+          # 4) 重建 dmg（staging：.app + Applications 链接），覆盖原生 dmg
+          cd "$ROOT"
+          STAGE="dmg-stage"; rm -rf "$STAGE"; mkdir -p "$STAGE" dmg
+          cp -R "$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          DMG="dmg/DSH Desktop_${VERSION}_aarch64.dmg"
+          hdiutil create -volname "DSH Desktop" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+
+          # 5) 以 Release 资产名（空格->点，同 tauri-action）覆盖上传
+          mv "macos/DSH Desktop.app.tar.gz" "macos/DSH.Desktop_aarch64.app.tar.gz"
+          mv "macos/DSH Desktop.app.tar.gz.sig" "macos/DSH.Desktop_aarch64.app.tar.gz.sig"
+          mv "$DMG" "dmg/DSH.Desktop_${VERSION}_aarch64.dmg"
+          gh release upload "$GITHUB_REF_NAME" \
+            "macos/DSH.Desktop_aarch64.app.tar.gz" \
+            "macos/DSH.Desktop_aarch64.app.tar.gz.sig" \
+            "dmg/DSH.Desktop_${VERSION}_aarch64.dmg" --clobber
 
       - name: 生成 SHA256SUMS（Windows）
         if: runner.os == 'Windows'
