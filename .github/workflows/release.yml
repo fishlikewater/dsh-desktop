@@ -142,11 +142,12 @@ jobs:
           #    tauri signer 对 env 私钥（TAURI_SIGNING_PRIVATE_KEY）与默认路径私钥
           #    同时存在时报冲突（--private-key 与 --private-key-path 互斥）。
           #    故将密钥写入临时文件、unset env 后走 --private-key-path。
+          #    注意：-f 是 --private-key-path 的短选项，待签名文件必须是位置参数。
           KEY_FILE="$(mktemp /tmp/dsh-signer-key.XXXXXX)"
           printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           unset TAURI_SIGNING_PRIVATE_KEY
-          npx tauri signer sign --private-key-path "$KEY_FILE" --password "" -f "DSH Desktop.app.tar.gz"
+          npx tauri signer sign --private-key-path "$KEY_FILE" --password "" "DSH Desktop.app.tar.gz"
           rm -f "$KEY_FILE"
 
           # 4) 重建 dmg（staging：.app + Applications 链接），覆盖原生 dmg
