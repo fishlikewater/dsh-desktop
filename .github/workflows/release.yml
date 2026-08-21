@@ -123,6 +123,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
           set -euxo pipefail
+          WORK="$(pwd)"
           APP="$(find src-tauri/target -type d -name 'DSH Desktop.app' -print -quit)"
           [ -n "$APP" ] || { echo "未找到 DSH Desktop.app"; exit 1; }
           APP_DIR="$(dirname "$APP")"
@@ -135,7 +136,7 @@ jobs:
           codesign -dv "$APP" 2>&1 | sed -n 's/.*Signature=\(.*\)/signature: \1/p'
 
           # 2) 重建 updater app.tar.gz（tar 顶层为 .app 目录，与 tauri updater_bundle 一致）
-          cd "$APP_DIR"
+          cd "$WORK/$APP_DIR"
           rm -f "DSH Desktop.app.tar.gz" "DSH Desktop.app.tar.gz.sig"
           tar -czf "DSH Desktop.app.tar.gz" "DSH Desktop.app"
           # 3) 重新生成 .sig（tar 内容已变化，原 sig 失效）
@@ -151,9 +152,9 @@ jobs:
           rm -f "$KEY_FILE"
 
           # 4) 重建 dmg（staging：.app + Applications 链接），覆盖原生 dmg
-          cd "$ROOT"
+          cd "$WORK/$ROOT"
           STAGE="dmg-stage"; rm -rf "$STAGE"; mkdir -p "$STAGE" dmg
-          cp -R "$APP" "$STAGE/"
+          cp -R "$WORK/$APP" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           DMG="dmg/DSH Desktop_${VERSION}_aarch64.dmg"
           hdiutil create -volname "DSH Desktop" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
