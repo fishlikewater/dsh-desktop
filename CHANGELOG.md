@@ -12,12 +12,12 @@
 
 ### Fixed
 
-- **macOS Dock 图标大小**：图标为满铺方图导致在 Dock 中比其他应用图标大一号；按 Apple 图标网格规范缩至画布中央 824×824（四周 100px 透明边距）生成 `icon.icns`，并让 `bundle.icon` 显式引用该 icns（此前 tauri-bundler 会把图标列表中的满铺 PNG 重新打包成 icns，带边距的 icns 不会被使用）；Windows 图标保持满铺规范不变
+- **应用图标恢复为黑鲸鱼设计**：此前安装包图标是按深蓝 "D" 设计（`icon-source.png`）生成的，黑鲸鱼设计（`app-icon.svg`：黑鲸鱼 + 浅灰圆角底）仅出现在壳页标题栏；现以鲸鱼设计全量重建各平台图标：macOS 按 Apple 图标网格规范（内容 824×824 居中 + 四周 100px 透明边距）打包 `icon.icns` 并让 `bundle.icon` 显式引用（此前 tauri-bundler 会把图标列表中的满铺 PNG 重新打包成 icns，带边距的 icns 不会被使用）；Windows 图标保持满铺规范
 
 ### 工程
 
 - tauri.conf.json CSP script-src sha256 随壳页脚本变更同步更新（check:frontend 门禁通过）
-- 新增 `scripts/regen-mac-icon.swift`：从 `icon-source.png` 生成带边距的 macOS 图标并重建 `icon.icns`（改图后重跑即可）
+- 新增 `scripts/regen-icons.swift`：解析 `app-icon.svg` 栅格化 → 全量生成各平台 PNG/ICNS/ICO（改图后重跑即可）
 - 新增 `.gitattributes`：`frontend-dist/index.html` 固定 `eol=lf`——CSP sha256 基于实际字节，Windows 检出默认 CRLF 会导致 hash 不一致（CI 红 + 构建产物壳页脚本被 CSP 拦截）
 
 ## [0.1.3] - 2026-08-20
