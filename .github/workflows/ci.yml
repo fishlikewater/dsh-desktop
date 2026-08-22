@@ -60,26 +60,32 @@ jobs:
         run: npm run check
 
       - name: 单元测试
-        # windows-gnu 测试 exe 加载失败的已知原因（0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND）：
-        # mingw 运行时 DLL（libgcc_s_seh-1.dll/libwinpthread-1.dll）不在 exe 目录，
-        # 加载器按 PATH 搜索时可能命中 Git for Windows 的旧版 mingw64 DLL（导出符号缺失）。
-        # 注：__TAURI_WORKSPACE__ manifest workaround 仅对 msvc 生效（tauri build.rs 判断），
-        # gnu 需自行保证运行时 DLL 搜索路径正确。
-        # 对策：把当前工具链 sysroot 的 bin（rustc --print sysroot）前置 PATH，
-        # 并剔除 Git mingw64，确保加载与新工具链匹配的运行时。
+        # windows-gnu 测试 exe 0xc0000139 诊断 + 修复：
+        # __TAURI_WORKSPACE__ manifest workaround 仅对 msvc 生效（tauri build.rs 判断），
+        # gnu 下需自行保证测试 exe 的导入 DLL 可解析。先 dump 导入表定位缺失项。
         shell: pwsh
         run: |
           $sysroot = (& rustc --print sysroot) | Select-Object -First 1
           $rustBin = Join-Path $sysroot "lib\rustlib\x86_64-pc-windows-gnu\bin"
-          Write-Host "sysroot: $sysroot"
-          Write-Host "rustBin 存在: $(Test-Path $rustBin)"
-          if (Test-Path $rustBin) {
-            Get-ChildItem $rustBin -Filter *.dll | ForEach-Object { Write-Host "DLL: $($_.Name)" }
+          Write-Host "== toolchain bin 内容 =="
+          Get-ChildItem $rustBin | ForEach-Object { Write-Host "  $($_.Name)" }
+          Get-ChildItem (Join-Path $rustBin 'self-contained') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  sc/$($_.Name)" }
+          Write-Host "== 导入表 dump =="
+          $exe = Get-ChildItem "src-tauri\target\debug\deps\dsh_desktop_lib-*.exe" | Where-Object { $_.Name -notmatch '\.d$' -and $_.Name -notmatch '^lib' } | Select-Object -First 1
+          Write-Host "exe: $($exe.FullName)"
+          $objdump = Get-ChildItem $rustBin -Recurse -Filter "objdump.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          Write-Host "objdump: $($objdump.FullName)"
+          if ($objdump) {
+            & $objdump.FullName -p $exe.FullName | Select-String "DLL Name" | ForEach-Object { Write-Host "  IMPORT: $($_.Line.Trim())" }
+          } else {
+            Write-Host "  (未找到 objdump，跳过导入表 dump)"
           }
           $targetDebug = "src-tauri\target\debug"
-          Write-Host "target/debug 存在 WebView2Loader.dll: $(Test-Path (Join-Path $targetDebug 'WebView2Loader.dll'))"
           $cleanPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'mingw64' }) -join ';'
-          $env:PATH = "$rustBin;$cleanPath;$targetDebug"
+          $env:PATH = "$targetDebug;$rustBin;$cleanPath"
+          Write-Host "== 直接运行测试 exe（捕获加载错误）=="
+          & $exe.FullName --list 2>&1 | Select-Object -First 5
+          Write-Host "exit: $LASTEXITCODE"
           cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Debug 构建
