@@ -2,6 +2,16 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.5] - 2026-08-22
+
+> 首个正式发布的 macOS 完整适配版本：v0.1.4 构建为发布草稿、未对外发布，其全部内容并入本版（详见 [0.1.4]）。
+
+- macOS 原生窗框与红绿灯标题栏（Overlay，VS Code 同款）+ 原生全屏
+- 应用图标恢复黑鲸鱼设计（含 macOS Dock 尺寸修复）
+- macOS 服务自管理（覆盖层/托盘一键启动与停止 DSH 服务）
+- 打包与 CI 修复：mac 图标进包（bundle.icon 引用 icns）、CSP sha256 换行符一致性（`.gitattributes` eol=lf）
+- 详细条目见 [0.1.4]
+
 ## [0.1.4] - 2026-08-22
 
 ### Added
