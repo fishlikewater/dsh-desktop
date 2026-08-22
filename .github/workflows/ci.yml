@@ -61,31 +61,29 @@ jobs:
 
       - name: 单元测试
         # windows-gnu 测试 exe 0xc0000139（STATUS_ENTRYPOINT_NOT_FOUND）修复：
-        # 1) __TAURI_WORKSPACE__ manifest workaround 仅对 msvc 生效（tauri build.rs 判断），
-        #    windows-gnu 不适用；
-        # 2) webview2-com-sys 在 gnu 下 #[link(name="WebView2Loader.dll")] 动态链接，
-        #    测试 exe 运行需在搜索路径找到匹配版本的 DLL——直接把运行时 DLL
-        #    （mingw 运行时 + WebView2Loader.dll）复制到 exe 同目录（deps/）最可靠；
-        # 3) 用 Git 自带 objdump dump 导入表验证假设。
+        # 根因 = 测试 exe 缺 Common Controls v6 manifest（tauri-plugin-dialog 链接了
+        # comctl32 v6 才有的符号如 TaskDialogIndirect；无 manifest 时绑定 System32 v5
+        # comctl32 → 入口点缺失）。tauri 官方 embed_manifest_for_tests 仅对 msvc
+        # 生效（/MANIFEST:EMBED 是 MSVC 链接器参数）；GNU ld 不适用。
+        # 修复：利用 Windows 外置 manifest 兼容机制（exe 同目录 .exe.manifest，
+        # 无内嵌 manifest 时加载器自动采用），先 --no-run 编译再注入再运行。
         shell: pwsh
         run: |
-          $sysroot = (& rustc --print sysroot) | Select-Object -First 1
-          $rustBin = Join-Path $sysroot "lib\rustlib\x86_64-pc-windows-gnu\bin"
-          $deps = "src-tauri\target\debug\deps"
-          Write-Host "== 复制运行时 DLL 到 exe 目录 =="
-          Copy-Item (Join-Path $rustBin "*.dll") $deps -Force -ErrorAction SilentlyContinue
-          $wv2 = "src-tauri\target\debug\WebView2Loader.dll"
-          if (Test-Path $wv2) { Copy-Item $wv2 $deps -Force }
-          Get-ChildItem $deps -Filter *.dll | ForEach-Object { Write-Host "  deps DLL: $($_.Name)" }
-          Write-Host "== 导入表 dump（Git 自带 objdump）=="
-          $objdump = "C:\Program Files\Git\mingw64\bin\objdump.exe"
-          if (Test-Path $objdump) {
-            Get-ChildItem $deps -Filter "dsh_desktop_lib-*.exe" | Where-Object { $_.Name -notmatch '^lib' } | Select-Object -First 1 | ForEach-Object {
-              Write-Host "  exe: $($_.Name)"
-              & $objdump -p $_.FullName | Select-String "DLL Name" | ForEach-Object { Write-Host "    IMPORT: $($_.Line.Trim())" }
-            }
-          } else {
-            Write-Host "  (Git objdump 不存在，跳过)"
+          cargo test --manifest-path src-tauri/Cargo.toml --lib --no-run
+          $manifest = @'
+          <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+            <dependency>
+              <dependentAssembly>
+                <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+              </dependentAssembly>
+            </dependency>
+          </assembly>
+          '@
+          Get-ChildItem "src-tauri\target\debug\deps\dsh_desktop_lib-*.exe" | Where-Object { $_.Name -notmatch '^lib' } | ForEach-Object {
+            $mf = "$($_.FullName).manifest"
+            Set-Content -Path $mf -Value $manifest -Encoding ASCII
+            Write-Host "已注入外置 manifest: $mf"
           }
           cargo test --manifest-path src-tauri/Cargo.toml --lib
 
