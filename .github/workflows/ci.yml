@@ -60,32 +60,33 @@ jobs:
         run: npm run check
 
       - name: 单元测试
-        # windows-gnu 测试 exe 0xc0000139 诊断 + 修复：
-        # __TAURI_WORKSPACE__ manifest workaround 仅对 msvc 生效（tauri build.rs 判断），
-        # gnu 下需自行保证测试 exe 的导入 DLL 可解析。先 dump 导入表定位缺失项。
+        # windows-gnu 测试 exe 0xc0000139（STATUS_ENTRYPOINT_NOT_FOUND）修复：
+        # 1) __TAURI_WORKSPACE__ manifest workaround 仅对 msvc 生效（tauri build.rs 判断），
+        #    windows-gnu 不适用；
+        # 2) webview2-com-sys 在 gnu 下 #[link(name="WebView2Loader.dll")] 动态链接，
+        #    测试 exe 运行需在搜索路径找到匹配版本的 DLL——直接把运行时 DLL
+        #    （mingw 运行时 + WebView2Loader.dll）复制到 exe 同目录（deps/）最可靠；
+        # 3) 用 Git 自带 objdump dump 导入表验证假设。
         shell: pwsh
         run: |
           $sysroot = (& rustc --print sysroot) | Select-Object -First 1
           $rustBin = Join-Path $sysroot "lib\rustlib\x86_64-pc-windows-gnu\bin"
-          Write-Host "== toolchain bin 内容 =="
-          Get-ChildItem $rustBin | ForEach-Object { Write-Host "  $($_.Name)" }
-          Get-ChildItem (Join-Path $rustBin 'self-contained') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  sc/$($_.Name)" }
-          Write-Host "== 导入表 dump =="
-          $exe = Get-ChildItem "src-tauri\target\debug\deps\dsh_desktop_lib-*.exe" | Where-Object { $_.Name -notmatch '\.d$' -and $_.Name -notmatch '^lib' } | Select-Object -First 1
-          Write-Host "exe: $($exe.FullName)"
-          $objdump = Get-ChildItem $rustBin -Recurse -Filter "objdump.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          Write-Host "objdump: $($objdump.FullName)"
-          if ($objdump) {
-            & $objdump.FullName -p $exe.FullName | Select-String "DLL Name" | ForEach-Object { Write-Host "  IMPORT: $($_.Line.Trim())" }
+          $deps = "src-tauri\target\debug\deps"
+          Write-Host "== 复制运行时 DLL 到 exe 目录 =="
+          Copy-Item (Join-Path $rustBin "*.dll") $deps -Force -ErrorAction SilentlyContinue
+          $wv2 = "src-tauri\target\debug\WebView2Loader.dll"
+          if (Test-Path $wv2) { Copy-Item $wv2 $deps -Force }
+          Get-ChildItem $deps -Filter *.dll | ForEach-Object { Write-Host "  deps DLL: $($_.Name)" }
+          Write-Host "== 导入表 dump（Git 自带 objdump）=="
+          $objdump = "C:\Program Files\Git\mingw64\bin\objdump.exe"
+          if (Test-Path $objdump) {
+            Get-ChildItem $deps -Filter "dsh_desktop_lib-*.exe" | Where-Object { $_.Name -notmatch '^lib' } | Select-Object -First 1 | ForEach-Object {
+              Write-Host "  exe: $($_.Name)"
+              & $objdump -p $_.FullName | Select-String "DLL Name" | ForEach-Object { Write-Host "    IMPORT: $($_.Line.Trim())" }
+            }
           } else {
-            Write-Host "  (未找到 objdump，跳过导入表 dump)"
+            Write-Host "  (Git objdump 不存在，跳过)"
           }
-          $targetDebug = "src-tauri\target\debug"
-          $cleanPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'mingw64' }) -join ';'
-          $env:PATH = "$targetDebug;$rustBin;$cleanPath"
-          Write-Host "== 直接运行测试 exe（捕获加载错误）=="
-          & $exe.FullName --list 2>&1 | Select-Object -First 5
-          Write-Host "exit: $LASTEXITCODE"
           cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Debug 构建
