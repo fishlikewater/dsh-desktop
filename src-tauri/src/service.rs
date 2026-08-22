@@ -6,23 +6,28 @@
 //! - .ps1 → `powershell -NoProfile -File "<path>" --profile web`
 //! - .exe → 直接执行
 //!
-//! 平台说明：服务自管理（PATH 探测 / 拉起 / taskkill 停止）为 Windows 实现；
-//! 非 Windows 平台提供 stub（返回可读错误），不实现 mac 端服务管理。
+//! 平台说明：
+//! - Windows：PATH 探测（DSH_CLI 环境变量优先）+ 拉起 + taskkill /T 停止；
+//! - macOS：GUI 应用 PATH 是精简的（Homebrew / nvm / npm 全局目录不在其中，
+//!   且 dsh 的 shebang `env node` 依赖 PATH 找到 node），因此探测覆盖常见
+//!   目录 + nvm 版本目录 + 登录 shell（zsh/bash `command -v dsh`）兜底，
+//!   拉起时给子进程合并一个富 PATH；停止用进程组 SIGTERM（spawn 时
+//!   process_group(0)），无 libc 依赖（近似 Windows 的 taskkill /T）；
+//! - 其他 Unix：stub（返回可读错误）。
 //!
 //! 测试说明：service 逻辑无自动化单测——windows-gnu 下 lib 单测中调用
 //! fs/env/PathBuf 等 API 或声明 `std::process::Child` 类型的 static 会触发
 //! rustc 链接 bug（0xc0000139），T5.1 已用手工冒烟验证（假 dsh 拉起/停止）。
 //! 详见 docs/testing.md。
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-#[cfg(target_os = "windows")]
 use crate::config::dsh_url;
 
 /// DETACHED_PROCESS(0x8)：子进程不继承调用方控制台（不弹黑窗），
@@ -32,11 +37,11 @@ pub(crate) const DETACHED_PROCESS: u32 = 0x0000_0008;
 
 /// 本应用拉起的服务进程 pid（不持有 Child 句柄：
 /// windows-gnu 下 `static` 含 `std::process::Child` 类型会使 test 二进制
-/// 加载失败 0xc0000139；且关闭句柄不影响子进程存活，停止时用 taskkill pid）。
-#[cfg(target_os = "windows")]
+/// 加载失败 0xc0000139；且关闭句柄不影响子进程存活，停止时用 taskkill/信号）。
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 static SERVICE_PID: OnceLock<Mutex<Option<u32>>> = OnceLock::new();
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 fn service_pid() -> &'static Mutex<Option<u32>> {
     SERVICE_PID.get_or_init(|| Mutex::new(None))
 }
@@ -85,7 +90,6 @@ pub fn find_dsh() -> Option<PathBuf> {
 
 /// 3080 服务探活（TCP connect，1.5s 超时）。
 /// 地址解析失败（无 host/无可用地址）一律视为不可达，绝不 panic。
-#[cfg(target_os = "windows")]
 fn service_reachable() -> bool {
     let url = dsh_url();
     let Ok(addrs) = url.socket_addrs(|| None) else {
@@ -119,8 +123,251 @@ pub fn start_service() -> Result<u32, String> {
     spawn_dsh(&dsh)
 }
 
-/// 非 Windows：服务自管理未实现（stub，不扩功能）。
-#[cfg(not(target_os = "windows"))]
+// ===== macOS 服务自管理 =====
+// GUI 应用（Dock 启动）的 PATH 只有系统目录：Homebrew/nvm/npm 全局目录
+// 均不在其中，且 dsh（node 脚本，shebang `env node`）运行还依赖能找到
+// node。因此探测覆盖常见目录 + nvm 版本目录 + 登录 shell 兜底；
+// 拉起时给子进程合并富 PATH。
+
+/// macOS 常见安装目录（brew / npm 全局 / nvm / pnpm / volta / 用户目录）
+#[cfg(target_os = "macos")]
+fn macos_path_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = vec![
+        "/opt/homebrew/bin".into(), // Apple Silicon Homebrew
+        "/usr/local/bin".into(),    // Intel Homebrew / npm 默认全局
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        for sub in [
+            ".npm-global/bin",
+            ".npm/bin",
+            "Library/pnpm",
+            ".volta/bin",
+            ".local/bin",
+            "bin",
+        ] {
+            dirs.push(home.join(sub));
+        }
+        // nvm：~/.nvm/versions/node/<version>/bin（dsh 与 node 同目录）
+        if let Ok(rd) = std::fs::read_dir(home.join(".nvm").join("versions").join("node")) {
+            for e in rd.flatten() {
+                dirs.push(e.path().join("bin"));
+            }
+        }
+    }
+    dirs
+}
+
+/// 登录 shell 探测 `command -v dsh`（覆盖用户自定义 PATH：asdf/mise 等）。
+/// 带超时：shell 启动脚本（.zshrc 等）拖慢也不会卡死界面。
+#[cfg(target_os = "macos")]
+fn shell_probe(cmd: &mut std::process::Command, timeout: std::time::Duration) -> Option<String> {
+    use std::io::Read;
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(_) => return None,
+        }
+    }
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    let s = out.trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// 查找 dsh CLI：DSH_CLI 环境变量 > PATH + 常见目录扫描 > 登录 shell 探测。
+#[cfg(target_os = "macos")]
+pub fn find_dsh_macos() -> Option<PathBuf> {
+    if let Some(v) = std::env::var_os("DSH_CLI") {
+        let p = PathBuf::from(v);
+        if p.is_file() {
+            return Some(p);
+        }
+        log::warn!(target: "service", "DSH_CLI 指定的路径不存在: {}", p.display());
+    }
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|v| std::env::split_paths(&v).collect())
+        .unwrap_or_default();
+    dirs.extend(macos_path_dirs());
+    for dir in &dirs {
+        let p = dir.join("dsh");
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    // 兜底：登录 shell 已加载用户 PATH（zsh -i 会读 .zshrc）
+    for shell in ["/bin/zsh", "/bin/bash"] {
+        let mut cmd = std::process::Command::new(shell);
+        cmd.args(["-lic", "command -v dsh"]);
+        if let Some(out) = shell_probe(&mut cmd, std::time::Duration::from_millis(1500)) {
+            let p = PathBuf::from(out);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// 启动 DSH 服务（macOS）：服务已可达 → Ok(0)；否则拉起 dsh，返回 pid。
+#[cfg(target_os = "macos")]
+pub fn start_service() -> Result<u32, String> {
+    if service_reachable() {
+        return Ok(0); // 已在运行
+    }
+    let Some(dsh) = find_dsh_macos() else {
+        let msg =
+            "未找到 dsh 命令：请安装 DSH 后重试（或设置 DSH_CLI 环境变量指向 dsh 可执行文件）";
+        log::warn!(target: "service", "{msg}");
+        return Err(msg.into());
+    };
+    spawn_dsh_macos(&dsh)
+}
+
+/// 拉起 dsh --profile web（macOS）：合并富 PATH 供 shebang `env node` 解析；
+/// 新进程组（process_group(0)），停止时整组 SIGTERM（近似 Windows taskkill /T）。
+#[cfg(target_os = "macos")]
+fn spawn_dsh_macos(dsh: &Path) -> Result<u32, String> {
+    use std::os::unix::process::CommandExt;
+
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = dsh.parent() {
+        dirs.push(dir.to_path_buf()); // dsh 与 node 同目录（nvm/npm 全局）时优先
+    }
+    dirs.extend(macos_path_dirs());
+    if let Some(p) = std::env::var_os("PATH") {
+        let mut seen = std::collections::HashSet::new();
+        for d in std::env::split_paths(&p) {
+            if seen.insert(d.clone()) {
+                dirs.push(d);
+            }
+        }
+    }
+    let path_env = dirs
+        .iter()
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let mut cmd = std::process::Command::new(dsh);
+    cmd.arg("--profile")
+        .arg("web")
+        .env("PATH", path_env)
+        .process_group(0); // 子进程自建进程组（pgid = pid），整组停止
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("拉起 dsh 失败（请确认 dsh 与 node 可执行）: {e}"))?;
+    let pid = child.id();
+    *service_pid().lock().unwrap() = Some(pid);
+    // 持有句柄：停止时可由 reaper 收割，避免僵尸残留
+    *service_child().lock().unwrap() = Some(child);
+    log::info!(target: "service", "已拉起 dsh（{}，pid={pid}），等待服务就绪", dsh.display());
+    Ok(pid)
+}
+
+/// 停止**本应用拉起的** DSH 服务（macOS：进程组 SIGTERM + 僵尸收割）。
+/// 不触碰用户自启的服务：仅当 SERVICE_PID 记录时执行；否则返回提示（不误杀）。
+#[cfg(target_os = "macos")]
+pub fn stop_service() -> Result<String, String> {
+    let (pid, mut child) = {
+        let pid_guard = service_pid().lock().unwrap();
+        let mut ch_guard = service_child().lock().unwrap();
+        (*pid_guard, ch_guard.take())
+    };
+    let Some(pid) = pid else {
+        return Err("未找到由本应用拉起的 DSH 服务（可能由其他方式启动，未做处理）".into());
+    };
+    // 进程组 SIGTERM（dsh → node 子树一起收；/bin/kill 负数 pid 即进程组）
+    let group_kill = std::process::Command::new("/bin/kill")
+        .args(["-s", "TERM", "--", &format!("-{pid}")])
+        .output();
+    match group_kill {
+        Ok(out) if out.status.success() => {
+            *service_pid().lock().unwrap() = None;
+            reap(child);
+            log::info!(target: "service", "已停止本应用拉起的 DSH 服务（pid={pid}）");
+            Ok(format!("已停止 DSH 服务（pid={pid}）"))
+        }
+        _ => {
+            // 组杀失败：多为进程组已消失（进程已退出）
+            let exited = child
+                .as_mut()
+                .map(|c| matches!(c.try_wait(), Ok(Some(_))))
+                .unwrap_or(false);
+            if exited {
+                *service_pid().lock().unwrap() = None;
+                log::info!(target: "service", "DSH 服务已不在运行（pid={pid}）");
+                return Ok(format!("DSH 服务已不在运行（pid={pid}）"));
+            }
+            // 兜底：直接向 pid 发 SIGTERM（进程组可能被外部改变）
+            match std::process::Command::new("/bin/kill")
+                .args(["-s", "TERM", &pid.to_string()])
+                .output()
+            {
+                Ok(out) if out.status.success() => {
+                    *service_pid().lock().unwrap() = None;
+                    reap(child);
+                    log::info!(target: "service", "已停止本应用拉起的 DSH 服务（pid={pid}，直接信号）");
+                    Ok(format!("已停止 DSH 服务（pid={pid}）"))
+                }
+                Ok(out) => Err(format!(
+                    "停止服务失败（pid={pid}）: {}",
+                    String::from_utf8_lossy(&out.stderr).trim()
+                )),
+                Err(e) => Err(format!("停止服务失败（pid={pid}）: {e}")),
+            }
+        }
+    }
+}
+
+/// macOS 持有子进程句柄用于停止时收割：Dropped Child 不等待退出，
+/// 进程死亡后会留下僵尸（`kill -0` 仍报"存活"）。
+/// 仅 macOS 编译（windows-gnu 下 static 含 Child 会触发测试二进制链接 bug）。
+#[cfg(target_os = "macos")]
+static SERVICE_CHILD: OnceLock<Mutex<Option<std::process::Child>>> = OnceLock::new();
+
+#[cfg(target_os = "macos")]
+fn service_child() -> &'static Mutex<Option<std::process::Child>> {
+    SERVICE_CHILD.get_or_init(|| Mutex::new(None))
+}
+
+/// 后台收割子进程：TERM 后轮询退出（最多 2s），未退出 SIGKILL 兜底；
+/// wait()/try_wait() 收割后不残留僵尸。
+#[cfg(target_os = "macos")]
+fn reap(child: Option<std::process::Child>) {
+    if let Some(mut c) = child {
+        std::thread::spawn(move || {
+            for _ in 0..40 {
+                match c.try_wait() {
+                    Ok(Some(_)) | Err(_) => return,
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+                }
+            }
+            let _ = c.kill(); // TERM 无效 → SIGKILL 兜底
+            let _ = c.wait();
+        });
+    }
+}
+
+/// 其他 Unix（如 Linux）：服务自管理未实现（stub，不扩功能）。
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn start_service() -> Result<u32, String> {
     Err("当前平台暂不支持从壳层拉起 DSH 服务（请手动启动 dsh）".into())
 }
@@ -162,8 +409,8 @@ pub fn stop_service() -> Result<String, String> {
     }
 }
 
-/// 非 Windows：服务自管理未实现（stub，不扩功能）。
-#[cfg(not(target_os = "windows"))]
+/// 其他 Unix（如 Linux）：服务自管理未实现（stub，不扩功能）。
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn stop_service() -> Result<String, String> {
     Err("当前平台暂不支持从壳层停止 DSH 服务（请手动结束 dsh 进程）".into())
 }
@@ -206,4 +453,80 @@ fn spawn_dsh(dsh: &Path) -> Result<u32, String> {
     *service_pid().lock().unwrap() = Some(pid);
     log::info!(target: "service", "已拉起 dsh（{}，pid={pid}），等待服务就绪", dsh.display());
     Ok(pid)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::find_dsh_macos;
+
+    /// 环境相关冒烟（仅 macOS 本机）：装有 dsh 时探测结果必须存在；
+    /// 未安装 dsh 时跳过（不失败）。CI 为 windows-gnu，不会执行。
+    #[test]
+    fn macos_find_dsh_returns_existing_file_when_installed() {
+        if let Some(p) = find_dsh_macos() {
+            assert!(p.is_file(), "探测到的 dsh 不存在: {}", p.display());
+        }
+    }
+
+    /// 端到端（仅 macOS 本机）：DSH_CLI 指向假 dsh 脚本 → 检查参数（--profile web）
+    /// → stop_service 进程组终止（含脚本子进程）。DSH_URL 指向空闲端口，
+    /// 不触碰真实 dsh/服务。CI 为 windows-gnu，不会执行此测试。
+    #[test]
+    fn macos_start_stop_fake_dsh_end_to_end() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tag = std::process::id();
+        let script = std::env::temp_dir().join(format!("dsh-fake-{tag}.sh"));
+        let marker = std::env::temp_dir().join(format!("dsh-fake-args-{tag}.txt"));
+        let _ = std::fs::remove_file(&marker);
+        // 假 dsh：把收到的参数写入 marker，起一个子进程后驻留（验证整组终止）
+        let body = format!(
+            "#!/bin/bash\necho \"$@\" > \"{}\"\n(sleep 30) &\nwait\n",
+            marker.display()
+        );
+        std::fs::write(&script, body).unwrap();
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).unwrap();
+
+        std::env::set_var("DSH_CLI", &script);
+        std::env::set_var("DSH_URL", "http://127.0.0.1:1"); // 空闲端口，避免交互真实服务
+
+        let pid = super::start_service().expect("start_service 应成功拉起假 dsh");
+        let mut args = String::new();
+        for _ in 0..200 {
+            if let Ok(s) = std::fs::read_to_string(&marker) {
+                args = s;
+                if !args.is_empty() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(args.contains("--profile"), "dsh 命令缺 --profile: {args}");
+        assert!(args.contains("web"), "dsh 命令缺 web profile: {args}");
+
+        let msg = super::stop_service().expect("stop_service 应成功终止假 dsh");
+        // 轮询等待进程退出（TERM → 退出 → 收割有短暂延迟），超时 3s 判定失败
+        let mut dead = false;
+        for _ in 0..60 {
+            let alive = std::process::Command::new("/bin/kill")
+                .args(["-0", &pid.to_string()])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !alive {
+                dead = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        // 先清理（脚本/标记/env），失败也不留残余、不污染其他测试
+        std::env::remove_var("DSH_CLI");
+        std::env::remove_var("DSH_URL");
+        let _ = std::fs::remove_file(&script);
+        let _ = std::fs::remove_file(&marker);
+        assert!(dead, "假 dsh 进程仍存活（pid={pid}）: {msg}");
+    }
 }

@@ -9,6 +9,7 @@
 - **macOS 原生窗口装饰**：保留系统窗框与红绿灯按钮（Overlay 标题栏，内容延伸至标题栏下，VS Code 同款）；壳页标题栏缩至 28px 并与红绿灯垂直居中，左侧留出按钮区域，隐藏 Windows 风格的最小化/最大化/关闭按钮与自绘边缘 resize 热区；字体栈加入 `-apple-system`/`BlinkMacSystemFont`
 - **macOS 原生全屏**：绿色按钮（红绿灯）与双击标题栏均进入系统全屏空间（此前无边框窗口 + `maximizable(false)` 没有任何全屏入口）；全屏动画与退出均由系统处理
 - macOS 窗口不再启用透明背景（透明窗口在原生全屏下存在渲染问题），壳页 body 铺满主题背景色保证暗色主题无露白
+- **macOS 服务自管理**：覆盖层「启动 DSH 服务」与托盘菜单服务启停现已支持 macOS（此前为 stub，需手动拉起）——`dsh` 探测覆盖 Homebrew / nvm / npm 全局目录与登录 shell（GUI 应用 PATH 精简，且 dsh 的 `env node` shebang 依赖 PATH 找到 node）；拉起时合并富 PATH、独立进程组；停止用进程组 SIGTERM（后台收割僵尸，2s 未退再 SIGKILL）；仍为方案 B（不捆绑 sidecar），仅停止本应用拉起的服务
 
 ### Fixed
 
