@@ -122,8 +122,8 @@ dsh-desktop/
 `.github/workflows/ci.yml` 定义全链路流水线：fmt 检查 → clippy → 单测 → 前端检查 →
 debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 
-> **当前状态**：仓库尚无 GitHub 远程，workflow 未实际触发过。推送到 GitHub 后
-> 即自动启用；本地等价验证命令序列见 docs/testing.md。
+> **当前状态**：仓库远程已配置（updater endpoint 指向 `fishlikewater/dsh-desktop`），
+> CI 已启用并多次运行；流水线当前状态以 GitHub Actions 页面为准（本地等价验证命令序列见 docs/testing.md）。
 > 端到端冒烟依赖本机 DSH 服务与 `~/.dsh` 配置，不作为 CI 步骤（本地 `npm run smoke` 承担；mock 化改造已列入后续优化方向）。
 
 ## 故障排查

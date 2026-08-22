@@ -60,7 +60,24 @@ jobs:
         run: npm run check
 
       - name: 单元测试
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+        # windows-gnu 测试 exe 加载失败的已知两类原因（0xc0000139）：
+        # 1) runner PATH 中 Git for Windows mingw64 的旧版运行时 DLL
+        #    （libwinpthread-1.dll/libgcc_s_seh-1.dll）抢先被加载，导出符号缺失；
+        # 2) webview2-com 链接的 WebView2Loader.dll 不在 exe 目录，
+        #    PATH 中如有不匹配版本会入口点缺失。
+        # 对策：前置 rustup 工具链自带 DLL 目录、剔除 Git mingw64、
+        # 并把 target/debug（webview2-com 构建时输出 WebView2Loader.dll 处）加入搜索路径。
+        shell: pwsh
+        run: |
+          $rustBin = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-gnu\lib\rustlib\x86_64-pc-windows-gnu\bin"
+          Write-Host "rustBin: $rustBin"
+          Write-Host "rustBin 存在 libwinpthread-1.dll: $(Test-Path (Join-Path $rustBin 'libwinpthread-1.dll'))"
+          $targetDebug = "src-tauri\target\debug"
+          Write-Host "target/debug 存在 WebView2Loader.dll: $(Test-Path (Join-Path $targetDebug 'WebView2Loader.dll'))"
+          $cleanPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'mingw64' }) -join ';'
+          $env:PATH = "$rustBin;$cleanPath;$targetDebug"
+          Write-Host "测试 PATH: $env:PATH"
+          cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Debug 构建
         run: cargo build --manifest-path src-tauri/Cargo.toml
