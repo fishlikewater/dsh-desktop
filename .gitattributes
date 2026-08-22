@@ -1,0 +1,5 @@
+# 壳页必须按 LF 检出（所有平台，含 Windows CI）：
+# tauri.conf.json 的 CSP script-src sha256 是对内联脚本的实际字节计算的，
+# Windows runner 默认 core.autocrlf 会把文件检出为 CRLF，导致 CI 与
+# 构建产物中嵌入的字节为 CRLF、hash 与 CSP 不一致（脚本被拦截）。
+frontend-dist/index.html text eol=lf

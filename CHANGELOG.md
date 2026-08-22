@@ -18,6 +18,7 @@
 
 - tauri.conf.json CSP script-src sha256 随壳页脚本变更同步更新（check:frontend 门禁通过）
 - 新增 `scripts/regen-mac-icon.swift`：从 `icon-source.png` 生成带边距的 macOS 图标并重建 `icon.icns`（改图后重跑即可）
+- 新增 `.gitattributes`：`frontend-dist/index.html` 固定 `eol=lf`——CSP sha256 基于实际字节，Windows 检出默认 CRLF 会导致 hash 不一致（CI 红 + 构建产物壳页脚本被 CSP 拦截）
 
 ## [0.1.3] - 2026-08-20
 
