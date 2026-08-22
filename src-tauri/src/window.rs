@@ -54,6 +54,19 @@ pub fn create_main_window(
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW, initial_url)
         .title("DSH Desktop")
         .min_inner_size(min_w as f64, min_h as f64)
+        // 窗口创建即隐藏：壳页 iframe 加载完成后由壳页调用 show()，
+        // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色），
+        // 同时避免任务栏图标"出现-消失-再出现"的闪烁。
+        // 用显式 hide() 兜底：实测 visible(false) 在透明窗口上可能不生效。
+        .visible(false);
+
+    // ===== 平台差异化窗口样式 =====
+    // - Windows：无边框 + Mica 毛玻璃（壳页自绘标题栏/伪最大化/自绘 resize）；
+    // - macOS：原生装饰（红绿灯按钮 = 原生最小化/全屏/关闭）+ Overlay 标题栏，
+    //   壳页标题栏改为 28px 与红绿灯垂直中心对齐（见 frontend-dist/index.html）。
+
+    #[cfg(target_os = "windows")]
+    let builder = builder
         // 原生窗口质感：无系统边框，由本地壳页提供自定义标题栏
         .decorations(false)
         // 关闭 DWM 阴影：tao 的无边框阴影机制会保留 8px 阴影边
@@ -64,12 +77,18 @@ pub fn create_main_window(
         .transparent(true)
         // 禁用系统最大化：无边框窗口的系统最大化会被 DWM 扩展到 -8px 偏移
         // （标题栏顶部被裁）。最大化改由壳页伪最大化实现（手动贴齐工作区）。
-        .maximizable(false)
-        // 窗口创建即隐藏：壳页 iframe 加载完成后由壳页调用 show()，
-        // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色），
-        // 同时避免任务栏图标"出现-消失-再出现"的闪烁。
-        // 用显式 hide() 兜底：实测 visible(false) 在透明窗口上可能不生效。
-        .visible(false);
+        .maximizable(false);
+
+    // macOS：保留原生窗口装饰（红绿灯按钮），Overlay 让内容延伸到标题栏下、
+    // 红绿灯悬浮于内容之上（VS Code 同款）；原生标题文字隐藏，由壳页自绘标题栏。
+    // 不启用 transparent：透明窗口在 macOS 原生全屏下有渲染问题（黑边/不刷新）；
+    // 不设 maximizable(false)（默认 true）→ 绿色按钮（全屏）保持可用，
+    // 由此获得系统原生全屏空间 + 动画（此前无边框 + maximizable(false) 没有全屏入口）。
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
     // 关键配置：让 WebView 把拖拽事件放行给页面。
     // DSH GUI 自带 document 级 drop 监听（intakeImages），
     // 若开启 Tauri 默认的窗口级拖拽拦截，页面收不到文件。

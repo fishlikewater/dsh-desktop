@@ -80,7 +80,7 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; overflow: hidden; background: transparent; }
       body {
-        font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
         color: var(--fg);
         display: flex;
         flex-direction: column;
@@ -124,6 +124,23 @@
       #btn-max .restore { display: none; }
       #titlebar.maximized #btn-max .maximize { display: none; }
       #titlebar.maximized #btn-max .restore { display: block; }
+      /* ===== macOS 原生标题栏适配（红绿灯按钮 + 原生全屏）=====
+         壳页 JS 检测到 macOS 时给 body 加 .mac：
+         - 标题栏改 28px（与 macOS 标准标题栏同高，红绿灯默认垂直中心正好居中）；
+         - 左侧留出红绿灯按钮区域（关闭/最小化/全屏三个原生按钮，壳页隐藏
+           Windows 风格的对应按钮）；
+         - 隐藏自绘边缘 resize 热区（原生装饰下系统提供边缘调整）。 */
+      body.mac #titlebar {
+        height: 28px;
+        flex: 0 0 28px;
+        padding-left: 86px;
+      }
+      body.mac #app-icon { margin: 0 8px 0 0; }
+      body.mac #btn-min, body.mac #btn-max, body.mac #btn-close { display: none; }
+      body.mac .resize-h { display: none; }
+      /* macOS 使用不透明窗口（透明窗口与原生全屏不兼容）：body 铺满背景色，
+         避免暗色主题下窗口边缘露白 */
+      body.mac { background: var(--titlebar-bg); }
       /* ===== 内容区 ===== */
       #frame-wrap { flex: 1; position: relative; background: transparent; }
       #dsh-frame { width: 100%; height: 100%; border: none; display: block; background: transparent; }
@@ -395,6 +412,10 @@
     </div>
 
     <script>
+      // ===== 平台识别（macOS：原生红绿灯 + 原生全屏，标题栏样式不同）=====
+      const IS_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent);
+      if (IS_MAC) document.body.classList.add("mac");
+
       // ===== 配置 =====
       const params = new URLSearchParams(location.search);
       const DSH_URL = params.get("dsh") || "http://127.0.0.1:3080";
@@ -534,9 +555,18 @@
         appWin.close();
       });
 
-      // 双击拖拽区：伪最大化/还原
+      // 双击拖拽区：Windows 伪最大化/还原；macOS 切换原生全屏（绿色按钮同款行为，
+      // 由系统全屏空间 + 动画完成；无边框窗口曾因无红绿灯而无法全屏）
       const drag = document.getElementById("drag-region");
-      drag.addEventListener("dblclick", toggleMaximize);
+      drag.addEventListener("dblclick", function () {
+        if (IS_MAC) {
+          appWin.isFullscreen().then(function (fs) {
+            appWin.setFullscreen(!fs);
+          }).catch(function () {});
+        } else {
+          toggleMaximize();
+        }
+      });
       // 单击拖动窗口：mousedown 延迟 startDragging（event.detail 区分双击，避免吞掉双击）
       drag.addEventListener("mousedown", function (e) {
         if (e.detail > 1) return;
