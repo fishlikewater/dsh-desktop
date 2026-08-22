@@ -10,9 +10,14 @@
 - **macOS 原生全屏**：绿色按钮（红绿灯）与双击标题栏均进入系统全屏空间（此前无边框窗口 + `maximizable(false)` 没有任何全屏入口）；全屏动画与退出均由系统处理
 - macOS 窗口不再启用透明背景（透明窗口在原生全屏下存在渲染问题），壳页 body 铺满主题背景色保证暗色主题无露白
 
+### Fixed
+
+- **macOS Dock 图标大小**：图标为满铺方图导致在 Dock 中比其他应用图标大一号；按 Apple 图标网格规范缩至画布中央 824×824（四周 100px 透明边距）并重建 `icon.icns`（Windows 图标保持满铺规范不变）
+
 ### 工程
 
 - tauri.conf.json CSP script-src sha256 随壳页脚本变更同步更新（check:frontend 门禁通过）
+- 新增 `scripts/regen-mac-icon.swift`：从 `icon-source.png` 生成带边距的 macOS 图标并重建 `icon.icns`（改图后重跑即可）
 
 ## [0.1.3] - 2026-08-20
 
