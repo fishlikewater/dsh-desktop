@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- **macOS Dock 图标大小**：图标为满铺方图导致在 Dock 中比其他应用图标大一号；按 Apple 图标网格规范缩至画布中央 824×824（四周 100px 透明边距）并重建 `icon.icns`（Windows 图标保持满铺规范不变）
+- **macOS Dock 图标大小**：图标为满铺方图导致在 Dock 中比其他应用图标大一号；按 Apple 图标网格规范缩至画布中央 824×824（四周 100px 透明边距）生成 `icon.icns`，并让 `bundle.icon` 显式引用该 icns（此前 tauri-bundler 会把图标列表中的满铺 PNG 重新打包成 icns，带边距的 icns 不会被使用）；Windows 图标保持满铺规范不变
 
 ### 工程
 

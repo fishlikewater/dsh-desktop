@@ -32,7 +32,7 @@
     "resources": {
       "resources/WebView2Loader.dll": "WebView2Loader.dll"
     },
-    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "icon": ["icons/icon.icns", "icons/icon.ico", "icons/icon.png"],
     "publisher": "dsh-desktop",
     "shortDescription": "DSH 桌面壳",
     "longDescription": "把 DeepSeek Harness Web GUI 包装为 Windows 桌面应用，提供托盘常驻、全局快捷键、系统通知等桌面能力。"
