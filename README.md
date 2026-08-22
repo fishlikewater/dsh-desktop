@@ -54,7 +54,7 @@ npm run check
 # 单元测试（Rust）
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 
-# 端到端冒烟（CDP，需 debug 构建 + DSH 服务在线；步骤见本地 docs/testing.md）
+# 端到端冒烟（CDP，需 debug 构建 + DSH 服务在线；步骤见 docs/testing.md）
 npm run smoke
 
 # 生成安装包（NSIS）
@@ -124,7 +124,7 @@ debug 构建 → release 构建 + NSIS 打包（上传安装包 artifact）。
 
 > **当前状态**：仓库尚无 GitHub 远程，workflow 未实际触发过。推送到 GitHub 后
 > 即自动启用；本地等价验证命令序列见 docs/testing.md。
-> 端到端冒烟依赖本机 DSH 服务与 `~/.dsh` 配置，不作为 CI 步骤（本地 `npm run smoke` 承担）。
+> 端到端冒烟依赖本机 DSH 服务与 `~/.dsh` 配置，不作为 CI 步骤（本地 `npm run smoke` 承担；mock 化改造已列入后续优化方向）。
 
 ## 故障排查
 

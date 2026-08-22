@@ -31,8 +31,7 @@ ScreenShot_*.png
 
 # ===== 个人文档与本地说明（仅本地保留，不入库）=====
 AGENTS.md
-SECURITY.md
-docs/
+# SECURITY.md 与 docs/ 为项目文档，随仓库发布（README 引用，须保证引用可达）
 
 # ===== 编辑器/系统 =====
 .vscode/
