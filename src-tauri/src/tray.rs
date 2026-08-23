@@ -1,14 +1,56 @@
 //! 托盘模块：常驻托盘图标与菜单（显示窗口/开机自启/服务启停/配置/测试通知/退出）。
 
+use std::sync::Mutex;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     Emitter,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
 use crate::service;
 use crate::window::show_main_window;
+
+/// 托盘图标句柄（set_tray_state 切换双态用；None = 尚未创建托盘）。
+/// OnceLock<Mutex> 模式与 service.rs::SERVICE_PID 一致。
+static TRAY_ICON: std::sync::OnceLock<Mutex<Option<TrayIcon>>> = std::sync::OnceLock::new();
+
+fn tray_icon() -> &'static Mutex<Option<TrayIcon>> {
+    TRAY_ICON.get_or_init(|| Mutex::new(None))
+}
+
+/// 按状态切换托盘图标（在线绿 / 离线灰）。
+/// 壳页 tick 在线/离线分支调用（检测事实源唯一在壳页，不新增 Rust 轮询）。
+#[tauri::command]
+pub fn set_tray_state(online: bool) {
+    let current = tray_icon().lock().unwrap();
+    let Some(tray) = current.as_ref() else {
+        return; // 托盘未创建（理论不发生）：静默
+    };
+    let result = tray.set_icon(Some(tray_icon_for(online)));
+    match result {
+        Ok(()) => {
+            log::debug!(target: "tray", "托盘图标 -> {}", if online { "在线" } else { "离线" })
+        }
+        Err(e) => log::warn!(target: "tray", "切换托盘图标失败: {e}"),
+    }
+}
+
+/// 加载单态托盘图标（32x32 PNG；编译期内嵌，随应用打包）
+fn tray_icon_for(online: bool) -> tauri::image::Image<'static> {
+    let bytes = if online {
+        include_bytes!("../icons/tray-on.png").as_slice()
+    } else {
+        include_bytes!("../icons/tray-off.png").as_slice()
+    };
+    match tauri::image::Image::from_bytes(bytes) {
+        Ok(img) => img,
+        Err(e) => {
+            log::error!(target: "tray", "解析托盘图标失败: {e}，回退透明像素");
+            tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+        }
+    }
+}
 
 /// 发送系统通知（供前端调用或托盘菜单触发）
 #[tauri::command]
@@ -59,7 +101,7 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     // 事件闭包中需要更新勾选状态，这里克隆句柄（内部 Arc 共享）
     let autostart_handle = autostart_item.clone();
 
-    TrayIconBuilder::with_id("main-tray")
+    let tray = TrayIconBuilder::with_id("main-tray")
         .icon(icon)
         .tooltip("DSH Desktop")
         .menu(&menu)
@@ -137,6 +179,9 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+
+    // 保存托盘句柄：壳页 set_tray_state 切换双态图标用
+    *tray_icon().lock().unwrap() = Some(tray);
 
     Ok(())
 }

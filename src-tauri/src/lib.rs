@@ -61,6 +61,7 @@ pub fn run() {
             config::set_address_history,
             config::probe_address,
             window::clamp_rect,
+            tray::set_tray_state,
             service::auto_start_service
         ])
         .plugin(tauri_plugin_dialog::init())
@@ -91,6 +92,8 @@ pub fn run() {
             window::create_main_window(app.handle(), initial_url)?;
 
             tray::setup_tray(app.handle())?;
+            // 托盘图标初态：按当前服务可达性设置（tick 后续会自动校正）
+            tray::set_tray_state(service::service_reachable());
             setup_global_shortcut(app.handle());
             // 监听 DSH 主题持久化文件变化，壳页标题栏即时跟随（取代固定轮询）
             theme::watch_settings_theme(app.handle());

@@ -146,7 +146,7 @@ pub fn find_dsh() -> Option<PathBuf> {
 
 /// 3080 服务探活（TCP connect，1.5s 超时）。
 /// 地址解析失败（无 host/无可用地址）一律视为不可达，绝不 panic。
-fn service_reachable() -> bool {
+pub(crate) fn service_reachable() -> bool {
     let url = dsh_url();
     let Ok(addrs) = url.socket_addrs(|| None) else {
         return false;

@@ -80,3 +80,14 @@ node scripts/bench/baseline.mjs [exe路径] [采样秒数] [间隔ms]
 
 - CI（`.github/workflows/ci.yml`）覆盖静态检查 + 单测 + 构建 + 打包 + **冒烟（mock 模式）**：Debug 构建后以临时 DSH_HOME + mock server 启动应用并运行全部场景。
 - 真实模式 `npm run smoke` 仍需本机 DSH 服务与 `~/.dsh` 配置，用于本地完整验证。
+
+## 托盘双态图标（手工冒烟记录）
+
+托盘图标切换无法在 CI 无 UI runner 下断言（`set_tray_state` 命令的可达性由冒烟场景覆盖：在线分支调用不报错）。本机手工验证步骤：
+
+1. 启动应用（DSH 服务运行中）→ 托盘图标为**绿圆**（`tray-on.png`）；
+2. 停止 DSH 服务 → 10s 内（在线轮询周期）托盘图标变为**灰圆**（`tray-off.png`）；
+3. 重新启动服务 → 图标恢复绿圆；
+4. 离线时左键单击托盘 → 主窗口唤起（与在线行为一致，即"优先唤起"语义）。
+
+图标资源为 32x32 白描边圆点（深浅系统主题均可见），路径 `src-tauri/icons/tray-{on,off}.png`（编译期内嵌 `include_bytes!`）。

@@ -954,6 +954,7 @@
         const ok = await check();
         if (ok) {
           overlay.classList.remove("show");
+          invoke("set_tray_state", { online: true }).catch(function () {}); // 托盘图标置在线
           if (!frameLoaded) {
             frameLoaded = true;
             loadedOk = false;
@@ -978,6 +979,7 @@
           showWindow();
           overlay.classList.add("show");
           setStatus("offline"); // 离线（红）
+          invoke("set_tray_state", { online: false }).catch(function () {}); // 托盘图标置离线
           errEl.textContent = "尚未检测到服务（" + new Date().toLocaleTimeString() + "）";
           // 自动重启开关（Task 9）：开启时尝试自动拉起，节流在 Rust 侧
           // （10s 窗口内重复调用直接 Ok(0)，不会轰炸 spawn）；失败静默，
