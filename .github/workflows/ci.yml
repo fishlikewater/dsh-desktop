@@ -90,6 +90,26 @@ jobs:
       - name: Debug 构建
         run: cargo build --manifest-path src-tauri/Cargo.toml
 
+      - name: 冒烟测试（mock 模式）
+        # 端到端冒烟（CDP 9226）：脱离真实 DSH 服务——mock-server 提供 iframe 目标，
+        # 临时 DSH_HOME 提供 settings.yaml 基线（主题 watcher 依赖）。
+        # 应用以 debug 构建后台启动（DSH_URL 指向 mock、DSH_HOME 指向临时目录），
+        # run-all 负责等待 CDP 就绪并顺序执行 4 个场景。
+        shell: pwsh
+        run: |
+          $mockHome = Join-Path $env:RUNNER_TEMP "dsh-smoke-home"
+          New-Item -ItemType Directory -Force -Path $mockHome | Out-Null
+          Set-Content -Path (Join-Path $mockHome "settings.yaml") -Value "ui-theme:`n  preference: light`n" -Encoding UTF8
+          $env:DSH_HOME = $mockHome
+          $env:DSH_URL = "http://127.0.0.1:3099"
+          $proc = Start-Process -FilePath "src-tauri\target\debug\dsh-desktop.exe" -PassThru -WindowStyle Hidden
+          Write-Host "应用 PID: $($proc.Id)"
+          try {
+            node scripts/smoke/run-all.mjs --mock
+          } finally {
+            if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          }
+
       - name: Release 构建 + NSIS 打包
         run: npm run build
         env:

@@ -33,14 +33,16 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 ## 端到端冒烟（CDP）
 
 ```bash
-npm run smoke
+npm run smoke        # 真实模式：DSH 服务在线
+npm run smoke:mock   # mock 模式：脱离真实 DSH 服务（CI 也是此模式）
 ```
 
 ### 前置条件
 
 1. **debug 构建**存在：`src-tauri/target/debug/dsh-desktop`（`--remote-debugging-port=9226` 仅 debug 构建开启）。先运行 `npm run dev` 或 `cargo build`。
 2. **应用已启动**（脚本不自动拉起）。
-3. **DSH 服务在线**（默认 `http://127.0.0.1:3080`，可用 `DSH_URL` 环境变量覆盖）。
+3. 真实模式：**DSH 服务在线**（默认 `http://127.0.0.1:3080`，可用 `DSH_URL` 环境变量覆盖）；
+   mock 模式：无需 DSH 服务（`run-all --mock` 自动拉起 `scripts/smoke/mock-server.mjs`，默认端口 3099，DSH_URL 自动指向 mock）。
 
 ### 场景
 
@@ -52,6 +54,12 @@ npm run smoke
 | 窗口控制权限 | `window-ctrl.mjs` | 伪最大化/最小化/show 的 capabilities |
 
 > **场景顺序**：`window-ctrl` 会最小化窗口（前端无 unminimize 权限，最小化后尺寸无法经 setSize 恢复），必须放最后。
+
+### mock 模式说明
+
+- mock server（`scripts/smoke/mock-server.mjs`）：极简 HTTP 服务（`/` 返回 HTML 作为 iframe 目标、`/health`），只模拟"可达 + 可加载页面"，不模拟任何 DSH API 语义。
+- 场景断言语义与真实模式一致：窗口几何/权限走 CDP + capabilities；主题同步监听 `<DSH_HOME>/settings.yaml`（run-all 在 mock 模式自动准备临时 DSH_HOME 与 light 基线，应用需以同一 DSH_HOME 启动）；隔离边界只依赖 iframe 页面存在 + Tauri ACL 按 origin 拒绝（mock 与真实 DSH 同为 127.0.0.1，行为一致）。
+- 应用启动方式（CI 同款）：`$env:DSH_URL="http://127.0.0.1:3099"; $env:DSH_HOME="<临时目录>"; Start-Process src-tauri/target/debug/dsh-desktop.exe`，再运行 `node scripts/smoke/run-all.mjs --mock`（CDP 就绪最长等待 60s）。
 
 ### 运行机制
 
@@ -70,5 +78,5 @@ node scripts/bench/baseline.mjs [exe路径] [采样秒数] [间隔ms]
 
 ## CI 与冒烟的关系
 
-- CI（`.github/workflows/ci.yml`）覆盖静态检查 + 单测 + 构建 + 打包，**不包含冒烟**：冒烟依赖本机 DSH 服务与 `~/.dsh` 配置，CI runner 无 dsh。
-- mock 化改造（脱离真实 DSH、可进 CI）已列入后续优化方向。
+- CI（`.github/workflows/ci.yml`）覆盖静态检查 + 单测 + 构建 + 打包 + **冒烟（mock 模式）**：Debug 构建后以临时 DSH_HOME + mock server 启动应用并运行全部场景。
+- 真实模式 `npm run smoke` 仍需本机 DSH 服务与 `~/.dsh` 配置，用于本地完整验证。
