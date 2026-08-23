@@ -504,9 +504,7 @@ mod tests {
     #[test]
     fn find_dsh_stops_at_first_matching_dir() {
         let dirs = vec![p("dirA"), p("dirB")];
-        let hit = find_dsh_in_with(&dirs, &["dsh.exe"], |path| {
-            *path == p("dirA/dsh.exe")
-        });
+        let hit = find_dsh_in_with(&dirs, &["dsh.exe"], |path| *path == p("dirA/dsh.exe"));
         assert_eq!(hit, Some(p("dirA/dsh.exe")));
     }
 
