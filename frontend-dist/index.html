@@ -511,7 +511,7 @@
             const wa = await getWorkArea();
             s.maximized = wa && Math.abs(size.width - wa[2]) < 24 && Math.abs(size.height - wa[3]) < 24;
           }
-          await window.__TAURI__.core.invoke("save_window_state", { state: s });
+          await window.__TAURI__.core.invoke("save_window_state", { state: s, label: appWin.label });
         } catch (e) {}
       }
       // 工具：构造 PhysicalPosition/PhysicalSize（一次封装，避免散落）

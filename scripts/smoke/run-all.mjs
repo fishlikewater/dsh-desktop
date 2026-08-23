@@ -45,6 +45,7 @@ const scenarios = [
   ["isolation.mjs", "隔离边界"],
   ["status-dot.mjs", "状态圆点"],
   ["address-switch.mjs", "地址切换"],
+  ["multi-window.mjs", "多会话窗口"],
   ["snap.mjs", "贴靠状态机"],
   ["window-ctrl.mjs", "窗口控制权限"],
 ];

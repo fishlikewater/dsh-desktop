@@ -61,6 +61,7 @@ pub fn run() {
             config::set_address_history,
             config::probe_address,
             window::clamp_rect,
+            window::open_session_window,
             tray::set_tray_state,
             service::auto_start_service
         ])
@@ -101,8 +102,19 @@ pub fn run() {
         })
         // 关闭窗口时最小化到托盘，应用常驻后台；
         // 「关闭时退出」开关（config.close_behavior）开启后改为真正退出。
+        // Task 14：会话窗口（label != main）关闭 = 真正销毁并从托盘列表移除。
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                let is_main = window.label() == config::MAIN_WINDOW;
+                if !is_main {
+                    log::info!(target: "window", "会话窗口关闭请求 -> 销毁（{}）", window.label());
+                    let app = window.app_handle().clone();
+                    let label = window.label().to_string();
+                    let _ = window.close();
+                    tray::on_session_window_closed(&app, &label);
+                    api.prevent_close();
+                    return;
+                }
                 // 读最新落盘值（开关切换即时生效，不依赖进程内缓存）
                 if config::current_close_behavior() {
                     log::info!(target: "window", "close requested -> exit（关闭时退出已开启）");

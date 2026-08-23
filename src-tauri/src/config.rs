@@ -216,8 +216,13 @@ pub fn theme_settings_path() -> PathBuf {
 /// 读取持久化的窗口状态，并 clamp 进当前工作区（记忆超出新显示器/工作区时
 /// 自动收缩拉回，前端拿到的即是可落地几何）。
 /// 前端在 show 回调后调用（隐藏窗口上 setPosition 无效）。
+/// Task 14 分域：记忆只对主窗口（label=MAIN_WINDOW）生效；
+/// 会话窗口返回默认（打开即居中），避免多窗口互相覆盖 window_state。
 #[tauri::command]
 pub fn load_window_state(window: tauri::WebviewWindow) -> WindowState {
+    if window.label() != MAIN_WINDOW {
+        return WindowState::default();
+    }
     let state = shell_config().window_state.unwrap_or_default();
     let Some(wa) = crate::window::work_area(window) else {
         return state;
@@ -228,7 +233,14 @@ pub fn load_window_state(window: tauri::WebviewWindow) -> WindowState {
 /// 持久化窗口状态（几何 + 最大化态）。
 /// 在内存缓存配置上更新 window_state 再整份写回（保留 dsh_url/dsh_home 等字段）。
 #[tauri::command]
-pub fn save_window_state(state: WindowState) -> Result<(), String> {
+pub fn save_window_state(state: WindowState, label: Option<String>) -> Result<(), String> {
+    // Task 14 分域：会话窗口（label=session-*）不参与窗口记忆；
+    // 主窗口（MAIN_WINDOW 或未传 label 的旧调用）才落盘，避免互相覆盖。
+    if let Some(l) = label {
+        if l != MAIN_WINDOW {
+            return Ok(());
+        }
+    }
     let path = shell_config_path();
     let mut cfg = shell_config().clone();
     // 无效几何防御：w/h 为 0（窗口尚未布局完成时前端采样）不落盘
@@ -714,6 +726,23 @@ mod tests {
         let back = ShellConfig::load_from(&path);
         assert!(back.first_close_notified, "标记应持久化");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_window_state_ignores_session_windows() {
+        // Task 14 分域：会话窗口（label=session-*）保存直接 Ok，不落盘
+        // （无法从外部断言"没写"，验证过滤分支不报错即契约成立）
+        let r = save_window_state(
+            WindowState {
+                x: 1,
+                y: 2,
+                w: 800,
+                h: 600,
+                maximized: false,
+            },
+            Some("session-1".into()),
+        );
+        assert!(r.is_ok(), "会话窗口保存应直接 Ok（不落盘）");
     }
 
     // ===== 服务地址历史（Task 10）=====

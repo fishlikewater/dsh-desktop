@@ -87,12 +87,66 @@ pub fn create_main_window(
     app: &tauri::AppHandle,
     initial_url: WebviewUrl,
 ) -> tauri::Result<WebviewWindow> {
+    create_window(app, MAIN_WINDOW, "DSH Desktop", initial_url, true)
+}
+
+/// 创建会话窗口（Task 14：多会话独立小窗）。
+/// - label：`session-N`（与主窗口区分，N 由调用方保证唯一）；
+/// - 与主窗口同一套壳页（index.html 是通用壳页，URL 及检测循环独立）；
+/// - 参与窗口状态记忆分域（记忆只对主窗口）。
+pub fn create_session_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    title: &str,
+    initial_url: WebviewUrl,
+) -> tauri::Result<WebviewWindow> {
+    create_window(app, label, title, initial_url, false)
+}
+
+/// 会话窗口序号（label 唯一性）
+static SESSION_SEQ: std::sync::OnceLock<std::sync::atomic::AtomicU32> = std::sync::OnceLock::new();
+
+fn session_seq() -> &'static std::sync::atomic::AtomicU32 {
+    SESSION_SEQ.get_or_init(|| std::sync::atomic::AtomicU32::new(1))
+}
+
+/// 打开新会话窗口（托盘「新建会话」/前端调用）。
+/// url 为空时用当前配置的 DSH 地址；返回新窗口 label。
+#[tauri::command]
+pub fn open_session_window(app: tauri::AppHandle, url: Option<String>) -> Result<String, String> {
+    let target = url
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| crate::config::dsh_url().to_string());
+    let label = format!(
+        "session-{}",
+        session_seq().fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let encoded = crate::config::encode_query_param(
+        &tauri::Url::parse(&target).unwrap_or_else(|_| crate::config::dsh_url()),
+    );
+    let initial_url = WebviewUrl::App(format!("index.html?dsh={encoded}").into());
+    let title = format!("DSH 会话 - {target}");
+    create_session_window(&app, &label, &title, initial_url)
+        .map(|_| label.clone())
+        .map_err(|e| format!("创建会话窗口失败: {e}"))
+}
+
+/// 共享窗口工厂：主窗口/会话窗口均经此创建（样式、隐藏、CDP 等一致）。
+/// `remember_state`：主窗口参与窗口状态记忆（load/save_window_state 按
+/// label 分域，见 config.rs）；会话窗口不参与（打开即居中）。
+fn create_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    title: &str,
+    initial_url: WebviewUrl,
+    _remember_state: bool,
+) -> tauri::Result<WebviewWindow> {
     // 初始尺寸自适应：大桌面保持 1280x840，小桌面贴近屏幕
     let (wa_w, wa_h) = primary_work_area(app);
     let (init_w, init_h, min_w, min_h) = initial_window_size(wa_w, wa_h);
 
-    let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW, initial_url)
-        .title("DSH Desktop")
+    let builder = WebviewWindowBuilder::new(app, label, initial_url)
+        .title(title)
         .min_inner_size(min_w as f64, min_h as f64)
         // 窗口创建即隐藏：壳页 iframe 加载完成后由壳页调用 show()，
         // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色），
@@ -144,7 +198,7 @@ pub fn create_main_window(
     // 显式设置初始尺寸（不依赖 builder 的 inner_size 传递，
     // 实测某些组合下 tao 会以默认尺寸创建窗口）。
     let _ = window.set_size(PhysicalSize::new(init_w, init_h));
-    log::info!(target: "window", "主窗口创建完成 {init_w}x{init_h}（工作区 {wa_w}x{wa_h}）");
+    log::info!(target: "window", "窗口创建完成 {label} {init_w}x{init_h}（工作区 {wa_w}x{wa_h}）");
     // 窗口居中由壳页事件驱动：iframe 加载完成 → 壳页 show() 回调后立即居中
     // （见 frontend-dist/index.html showWindow），不再使用固定延迟睡眠线程。
 

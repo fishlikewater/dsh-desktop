@@ -2,9 +2,9 @@
 
 use std::sync::Mutex;
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    Emitter,
+    Emitter, Manager,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
@@ -60,38 +60,9 @@ pub(crate) fn notify(app: tauri::AppHandle, title: String, body: String) {
 }
 
 /// 构建系统托盘：左键单击显示窗口，菜单含「显示主窗口」「开机自启」「启动/停止 DSH 服务」
-/// 「配置…」「测试通知」「退出」
+/// 「新建会话…」「会话窗口列表」「配置…」「测试通知」「退出」
 pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let auto_enabled = app.autolaunch().is_enabled().unwrap_or(false);
-    let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-    let autostart_item = CheckMenuItem::with_id(
-        app,
-        "autostart",
-        "开机自启",
-        true,
-        auto_enabled,
-        None::<&str>,
-    )?;
-    let svc_start_item = MenuItem::with_id(app, "svc-start", "启动 DSH 服务", true, None::<&str>)?;
-    let svc_stop_item = MenuItem::with_id(app, "svc-stop", "停止 DSH 服务", true, None::<&str>)?;
-    let settings_item = MenuItem::with_id(app, "settings", "配置…", true, None::<&str>)?;
-    let notify_item = MenuItem::with_id(app, "notify", "发送测试通知", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(
-        app,
-        &[
-            &show_item,
-            &autostart_item,
-            &sep,
-            &svc_start_item,
-            &svc_stop_item,
-            &sep,
-            &settings_item,
-            &notify_item,
-            &quit_item,
-        ],
-    )?;
+    let (menu, autostart_item) = build_tray_menu(app)?;
 
     let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
         // 兜底：1x1 透明像素，正常情况下不会走到这里
@@ -110,6 +81,22 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             "show" => {
                 log::debug!(target: "tray", "menu: show");
                 show_main_window(app);
+            }
+            // Task 14：会话窗口项（id 前缀 win:）
+            id if id.starts_with("win:") => {
+                let label = &id[4..];
+                log::debug!(target: "tray", "menu: 唤起窗口 {label}");
+                if let Some(w) = app.get_webview_window(label) {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+            // Task 14：新建会话窗口
+            "new-session" => {
+                log::info!(target: "tray", "menu: new-session");
+                let _ = crate::window::open_session_window(app.clone(), None);
+                rebuild_tray_menu(app);
             }
             "autostart" => {
                 let mgr = app.autolaunch();
@@ -184,6 +171,88 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     *tray_icon().lock().unwrap() = Some(tray);
 
     Ok(())
+}
+
+/// 构建托盘菜单（Task 14 可重建）：固定项 + 「新建会话…」+ 会话窗口列表。
+/// 返回 (menu, autostart_item)——autostart 句柄供事件闭包更新勾选态。
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+) -> tauri::Result<(
+    tauri::menu::Menu<tauri::Wry>,
+    tauri::menu::CheckMenuItem<tauri::Wry>,
+)> {
+    let auto_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    let autostart_item = tauri::menu::CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "开机自启",
+        true,
+        auto_enabled,
+        None::<&str>,
+    )?;
+    let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    let svc_start_item = MenuItem::with_id(app, "svc-start", "启动 DSH 服务", true, None::<&str>)?;
+    let svc_stop_item = MenuItem::with_id(app, "svc-stop", "停止 DSH 服务", true, None::<&str>)?;
+    let new_session_item = MenuItem::with_id(app, "new-session", "新建会话…", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "settings", "配置…", true, None::<&str>)?;
+    let notify_item = MenuItem::with_id(app, "notify", "发送测试通知", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+
+    // 会话窗口列表（label != MAIN_WINDOW；关闭后重建时自动消失）
+    let win_items: Vec<MenuItem<tauri::Wry>> = app
+        .webview_windows()
+        .iter()
+        .filter(|(label, _)| label.as_str() != crate::config::MAIN_WINDOW)
+        .map(|(label, w)| {
+            let title = w.title().unwrap_or_else(|_| label.clone());
+            MenuItem::with_id(
+                app,
+                format!("win:{label}"),
+                format!("会话：{title}"),
+                true,
+                None::<&str>,
+            )
+        })
+        .collect::<tauri::Result<Vec<_>>>()?;
+
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
+        &show_item,
+        &autostart_item,
+        &sep,
+        &svc_start_item,
+        &svc_stop_item,
+        &sep,
+        &new_session_item,
+    ];
+    for item in &win_items {
+        items.push(item);
+    }
+    items.push(&sep);
+    items.push(&settings_item);
+    items.push(&notify_item);
+    items.push(&quit_item);
+    let menu = Menu::with_items(app, &items)?;
+    Ok((menu, autostart_item))
+}
+
+/// 重建托盘菜单（会话窗口开/关后调用，列表随窗口变化更新）。
+pub fn rebuild_tray_menu(app: &tauri::AppHandle) {
+    let Ok((menu, _)) = build_tray_menu(app) else {
+        return;
+    };
+    let current = tray_icon().lock().unwrap();
+    if let Some(tray) = current.as_ref() {
+        match tray.set_menu(Some(menu)) {
+            Ok(()) => log::debug!(target: "tray", "托盘菜单已重建"),
+            Err(e) => log::warn!(target: "tray", "重建托盘菜单失败: {e}"),
+        }
+    }
+}
+
+/// 会话窗口已关闭：更新托盘菜单（移除该窗口项）。
+pub fn on_session_window_closed(app: &tauri::AppHandle, _label: &str) {
+    rebuild_tray_menu(app);
 }
 
 /// 托盘操作结果通知（成功/失败统一反馈）
