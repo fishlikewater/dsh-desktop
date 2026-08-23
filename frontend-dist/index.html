@@ -504,6 +504,12 @@
             <label class="switch"><input type="checkbox" id="settings-close-exit"><span class="track"></span></label>
           </div>
           <div class="settings-row">
+            <span class="label">全局快捷键</span>
+            <input id="settings-shortcut" type="text" spellcheck="false" placeholder="ctrl+shift+d" />
+            <button id="settings-shortcut-save" class="mini">保存</button>
+            <span class="hint">唤起主窗口；macOS 用 cmd</span>
+          </div>
+          <div class="settings-row">
             <span class="label">服务崩溃自动重启</span>
             <span class="hint" id="settings-restart-hint">开：服务异常退出后自动重新拉起</span>
             <label class="switch"><input type="checkbox" id="settings-auto-restart"><span class="track"></span></label>
@@ -1133,6 +1139,8 @@
       const settingsCloseHint = document.getElementById("settings-close-hint");
       const settingsAutoRestart = document.getElementById("settings-auto-restart");
       const settingsRestartHint = document.getElementById("settings-restart-hint");
+      const settingsShortcut = document.getElementById("settings-shortcut");
+      const settingsShortcutSave = document.getElementById("settings-shortcut-save");
       const settingsUpdateBtn = document.getElementById("settings-update-check");
       const settingsUpdateInstallBtn = document.getElementById("settings-update-install");
       const settingsUpdateResult = document.getElementById("settings-update-result");
@@ -1247,6 +1255,10 @@
             ? "开：服务异常退出后自动重新拉起（10s 节流）"
             : "开：服务异常退出后自动重新拉起";
         }).catch(function () {});
+        // 读取全局快捷键（展示当前生效键位）
+        invoke("get_shortcut").then(function (v) {
+          settingsShortcut.value = v || "";
+        }).catch(function () {});
         settingsModal.classList.add("show");
       }
       function closeSettings() { settingsModal.classList.remove("show"); }
@@ -1257,6 +1269,24 @@
       });
       // 托盘"设置…"入口
       window.__TAURI__.event.listen("open-settings", function () { openSettings(); });
+
+      settingsShortcutSave.addEventListener("click", function () {
+        const spec = settingsShortcut.value.trim();
+        invoke("set_shortcut", { spec: spec }).then(function () {
+          // 落盘成功 → 重新注册（即时生效）；失败展示错误（非法键位被拒）
+          return invoke("reapply_global_shortcut");
+        }).then(function () {
+          settingsUpdateResult.textContent = "快捷键已更新（立即生效）";
+        }).catch(function (e) {
+          settingsUpdateResult.textContent = String(e);
+          invoke("get_shortcut").then(function (v) {
+            settingsShortcut.value = v || "";
+          }).catch(function () {});
+        });
+      });
+      settingsShortcut.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") settingsShortcutSave.click();
+      });
 
       settingsCloseExit.addEventListener("change", function () {
         const want = settingsCloseExit.checked;

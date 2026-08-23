@@ -68,6 +68,9 @@ pub struct ShellConfig {
     /// 仅本机地址——CSP frame-src 静态限制）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address_history: Option<Vec<String>>,
+    /// 全局快捷键（Task 18："ctrl+shift+d" 等；None = 平台默认）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut: Option<String>,
 }
 
 impl ShellConfig {
@@ -745,6 +748,74 @@ mod tests {
         assert!(r.is_ok(), "会话窗口保存应直接 Ok（不落盘）");
     }
 
+    // ===== 全局快捷键（Task 18）=====
+
+    #[test]
+    fn parse_shortcut_default_and_round_trip() {
+        use tauri_plugin_global_shortcut::{Code, Modifiers};
+        // 默认（Windows）解析成功且位正确
+        let (mods, code) = parse_shortcut(DEFAULT_SHORTCUT).expect("默认快捷键应合法");
+        assert!(mods.contains(Modifiers::CONTROL));
+        assert!(mods.contains(Modifiers::SHIFT));
+        assert_eq!(code, Code::KeyD);
+        // macOS 默认
+        let (mods, code) = parse_shortcut("cmd+shift+d").expect("cmd 组合应合法");
+        assert!(mods.contains(Modifiers::SUPER));
+        assert_eq!(code, Code::KeyD);
+    }
+
+    #[test]
+    fn parse_shortcut_accepts_combinations_and_case() {
+        use tauri_plugin_global_shortcut::Code;
+        let (_, code) = parse_shortcut("Alt+Shift+F12").expect("大小写混合应合法");
+        assert_eq!(code, Code::F12);
+        let (_, code) = parse_shortcut("ctrl+9").expect("数字键应合法");
+        assert_eq!(code, Code::Digit9);
+    }
+
+    #[test]
+    fn parse_shortcut_rejects_invalid_input() {
+        // 无修饰键 / 无键段 / 未知键 / 多键段
+        assert!(parse_shortcut("d").is_none(), "裸键应拒绝");
+        assert!(parse_shortcut("ctrl+").is_none(), "缺键段应拒绝");
+        assert!(parse_shortcut("ctrl+zz").is_none(), "未知键应拒绝");
+        assert!(parse_shortcut("ctrl+shift+d+e").is_none(), "多键段应拒绝");
+        assert!(parse_shortcut("").is_none(), "空串应拒绝");
+        assert!(parse_shortcut("ctrl+ ` ` ").is_none(), "空白键段应拒绝");
+    }
+
+    #[test]
+    fn shortcut_serde_round_trip_preserves_value() {
+        let dir = std::env::temp_dir().join(format!("dsh-shortcut-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let cfg = ShellConfig {
+            shortcut: Some("alt+f1".into()),
+            ..Default::default()
+        };
+        cfg.save_to(&path).unwrap();
+        let back = ShellConfig::load_from(&path);
+        assert_eq!(
+            back.shortcut.as_deref(),
+            Some("alt+f1"),
+            "序列化往返应保持键位"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn shortcut_platform_default_is_parseable() {
+        // 平台默认常量与平台一致且合法（get_shortcut 的未设置分支用它）
+        #[cfg(target_os = "macos")]
+        assert_eq!(DEFAULT_SHORTCUT_PLATFORM, "cmd+shift+d");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(DEFAULT_SHORTCUT_PLATFORM, "ctrl+shift+d");
+        assert!(
+            parse_shortcut(DEFAULT_SHORTCUT_PLATFORM).is_some(),
+            "平台默认应可解析"
+        );
+    }
+
     // ===== 服务地址历史（Task 10）=====
 
     #[test]
@@ -861,4 +932,128 @@ mod tests {
         }
         String::from_utf8_lossy(&out).into_owned()
     }
+}
+
+// ===== 全局快捷键配置（Task 18：设置页可修改，即时生效）=====
+
+/// 默认快捷键（Windows/Linux：Ctrl+Shift+D 唤起主窗口）
+pub const DEFAULT_SHORTCUT: &str = "ctrl+shift+d";
+/// macOS 默认（Command+Shift+D）
+#[cfg(target_os = "macos")]
+pub const DEFAULT_SHORTCUT_PLATFORM: &str = "cmd+shift+d";
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_SHORTCUT_PLATFORM: &str = "ctrl+shift+d";
+
+/// 解析快捷键字符串为 (修饰键, 键码)。
+/// 格式：`<mods>+<key>`，mods ∈ {ctrl, cmd, alt, shift}（+ 分隔、小写、可组合），
+/// key ∈ {a-z, 0-9, f1-f12}。非法输入返回 None（调用方回退默认并告警）。
+pub fn parse_shortcut(
+    spec: &str,
+) -> Option<(
+    tauri_plugin_global_shortcut::Modifiers,
+    tauri_plugin_global_shortcut::Code,
+)> {
+    use tauri_plugin_global_shortcut::{Code, Modifiers};
+    let parts: Vec<&str> = spec.split('+').map(str::trim).collect();
+    let mut mods = Modifiers::empty();
+    let mut key: Option<Code> = None;
+    for part in parts {
+        match part.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => mods |= Modifiers::CONTROL,
+            "cmd" | "command" | "meta" | "super" => mods |= Modifiers::SUPER,
+            "alt" | "option" => mods |= Modifiers::ALT,
+            "shift" => mods |= Modifiers::SHIFT,
+            _ => {
+                if key.is_some() {
+                    return None; // 多个键段 → 非法
+                }
+                key = Some(shortcut_code(part.to_ascii_lowercase().as_str())?);
+            }
+        }
+    }
+    let key = key?; // 无键段 → 非法
+                    // 至少一个修饰键（裸键全局注册会吞噬系统键）
+    if mods.is_empty() {
+        return None;
+    }
+    Some((mods, key))
+}
+
+/// 键码 token → tauri Code（a-z / 0-9 / f1-f12）
+fn shortcut_code(t: &str) -> Option<tauri_plugin_global_shortcut::Code> {
+    use tauri_plugin_global_shortcut::Code;
+    let c = match t {
+        "a" => Code::KeyA,
+        "b" => Code::KeyB,
+        "c" => Code::KeyC,
+        "d" => Code::KeyD,
+        "e" => Code::KeyE,
+        "f" => Code::KeyF,
+        "g" => Code::KeyG,
+        "h" => Code::KeyH,
+        "i" => Code::KeyI,
+        "j" => Code::KeyJ,
+        "k" => Code::KeyK,
+        "l" => Code::KeyL,
+        "m" => Code::KeyM,
+        "n" => Code::KeyN,
+        "o" => Code::KeyO,
+        "p" => Code::KeyP,
+        "q" => Code::KeyQ,
+        "r" => Code::KeyR,
+        "s" => Code::KeyS,
+        "t" => Code::KeyT,
+        "u" => Code::KeyU,
+        "v" => Code::KeyV,
+        "w" => Code::KeyW,
+        "x" => Code::KeyX,
+        "y" => Code::KeyY,
+        "z" => Code::KeyZ,
+        "0" => Code::Digit0,
+        "1" => Code::Digit1,
+        "2" => Code::Digit2,
+        "3" => Code::Digit3,
+        "4" => Code::Digit4,
+        "5" => Code::Digit5,
+        "6" => Code::Digit6,
+        "7" => Code::Digit7,
+        "8" => Code::Digit8,
+        "9" => Code::Digit9,
+        "f1" => Code::F1,
+        "f2" => Code::F2,
+        "f3" => Code::F3,
+        "f4" => Code::F4,
+        "f5" => Code::F5,
+        "f6" => Code::F6,
+        "f7" => Code::F7,
+        "f8" => Code::F8,
+        "f9" => Code::F9,
+        "f10" => Code::F10,
+        "f11" => Code::F11,
+        "f12" => Code::F12,
+        _ => return None,
+    };
+    Some(c)
+}
+
+/// 读取当前快捷键（未设置 → 平台默认）。
+#[tauri::command]
+pub fn get_shortcut() -> String {
+    ShellConfig::load_from(&shell_config_path())
+        .shortcut
+        .unwrap_or_else(|| DEFAULT_SHORTCUT_PLATFORM.to_string())
+}
+
+/// 设置快捷键（先校验解析，非法拒绝并返回错误——不落盘）。
+#[tauri::command]
+pub fn set_shortcut(spec: String) -> Result<(), String> {
+    let s = spec.trim().to_string();
+    if parse_shortcut(&s).is_none() {
+        return Err(format!(
+            "快捷键格式非法（应为 ctrl/cmd/alt/shift 组合 + a-z/0-9/f1-f12，如 {DEFAULT_SHORTCUT}）"
+        ));
+    }
+    update_config(|cfg| {
+        cfg.shortcut = Some(s);
+    })
 }

@@ -4,36 +4,14 @@ mod config;
 mod logging;
 mod service;
 mod settings;
+mod shortcut;
 mod theme;
 mod tray;
 mod window;
 
 use tauri::{Manager, Url, WebviewUrl, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use config::{dsh_url, encode_query_param};
-
-/// 注册全局快捷键：Ctrl+Shift+D 唤起主窗口
-fn setup_global_shortcut(app: &tauri::AppHandle) {
-    let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyD);
-    if let Err(e) = app
-        .global_shortcut()
-        .on_shortcut(shortcut, |app, _sc, event| {
-            if event.state() == ShortcutState::Pressed {
-                log::info!(target: "shortcut", "Ctrl+Shift+D pressed -> show main window");
-                window::show_main_window(app);
-            }
-        })
-    {
-        log::error!(target: "shortcut", "注册全局快捷键回调失败: {e}");
-    }
-    if let Err(e) = app.global_shortcut().register(shortcut) {
-        // 快捷键可能被其他应用占用，此时仅告警，不影响壳层运行
-        log::warn!(target: "shortcut", "注册全局快捷键 Ctrl+Shift+D 失败: {e}");
-    } else {
-        log::info!(target: "shortcut", "全局快捷键 Ctrl+Shift+D 已注册");
-    }
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -66,6 +44,9 @@ pub fn run() {
             window::list_session_windows,
             window::close_session_window,
             tray::set_tray_state,
+            config::get_shortcut,
+            config::set_shortcut,
+            shortcut::reapply_global_shortcut,
             service::auto_start_service
         ])
         .plugin(tauri_plugin_dialog::init())
@@ -98,7 +79,7 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             // 托盘图标初态：按当前服务可达性设置（tick 后续会自动校正）
             tray::set_tray_state(service::service_reachable());
-            setup_global_shortcut(app.handle());
+            shortcut::setup_global_shortcut(app.handle());
             // 监听 DSH 主题持久化文件变化，壳页标题栏即时跟随（取代固定轮询）
             theme::watch_settings_theme(app.handle());
             Ok(())
