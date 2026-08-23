@@ -38,10 +38,12 @@ const DSH_URL = MOCK
 
 // 场景顺序说明：window-ctrl 会最小化窗口（前端无 unminimize 权限，最小化后
 // 尺寸无法经 setSize 恢复），因此必须放在最后，避免污染后续场景。
+// snap 在 window-ctrl 之前：贴靠/还原只改几何，且还原回场景初始状态。
 const scenarios = [
   ["window-center.mjs", "窗口居中"],
   ["theme-sync.mjs", "主题即时同步"],
   ["isolation.mjs", "隔离边界"],
+  ["snap.mjs", "贴靠状态机"],
   ["window-ctrl.mjs", "窗口控制权限"],
 ];
 

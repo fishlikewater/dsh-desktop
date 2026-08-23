@@ -566,6 +566,19 @@
       }
       async function toggleMaximize() {
         try {
+          // 贴靠态优先还原（双击/按钮在贴靠中 = 回到贴靠前几何）
+          if (snappedDir) {
+            snappedDir = null;
+            if (savedRect) {
+              await appWin.setPosition(
+                new window.__TAURI__.window.PhysicalPosition(savedRect.x, savedRect.y)
+              );
+              await fitSize(savedRect.w, savedRect.h);
+            }
+            syncMax();
+            persistWindowState(null);
+            return;
+          }
           const size = await appWin.outerSize();
           const wa = await getWorkArea();
           if (!wa) return;
@@ -608,6 +621,103 @@
         appWin.close();
       });
 
+      // ===== Windows 11 风格贴靠（半屏/象限 + Win+方向键）=====
+      // 系统贴靠被无边框+maximizable(false) 禁用，这里按 work_area 计算贴靠几何。
+      // 贴靠状态机与伪最大化共用 savedRect：贴靠首存（手动几何）→ 还原回 savedRect；
+      // 贴靠中再次贴靠不覆盖 savedRect。
+      let snappedDir = null; // "left"|"right"|"up-left"|"up-right"|"down-left"|"down-right"|null
+
+      // 计算 6 张贴靠几何（基于 work_area 的物理像素分区）
+      function snapGeometries(wa) {
+        const halfW = Math.round(wa[2] / 2);
+        const halfH = Math.round(wa[3] / 2);
+        return {
+          "left": { x: wa[0], y: wa[1], w: halfW, h: wa[3] },
+          "right": { x: wa[0] + halfW, y: wa[1], w: wa[2] - halfW, h: wa[3] },
+          "up-left": { x: wa[0], y: wa[1], w: halfW, h: halfH },
+          "up-right": { x: wa[0] + halfW, y: wa[1], w: wa[2] - halfW, h: halfH },
+          "down-left": { x: wa[0], y: wa[1] + halfH, w: halfW, h: wa[3] - halfH },
+          "down-right": { x: wa[0] + halfW, y: wa[1] + halfH, w: wa[2] - halfW, h: wa[3] - halfH },
+        };
+      }
+
+      // 贴靠到指定方向（自动保存还原几何；重复同向贴靠 = 还原）
+      async function snapTo(dir) {
+        try {
+          const wa = await getWorkArea();
+          if (!wa) return;
+          // 重复同向：还原（Windows 语义：再次 Win+方向键 / 拖回还原）
+          if (snappedDir === dir) {
+            snappedDir = null;
+            if (savedRect) {
+              await appWin.setPosition(physPos(savedRect));
+              await fitSize(savedRect.w, savedRect.h);
+            }
+            return;
+          }
+          // 首次贴靠（非最大化、非贴靠态）：保存当前手动几何
+          const size = await appWin.outerSize();
+          const nearFull =
+            Math.abs(size.width - wa[2]) < 24 && Math.abs(size.height - wa[3]) < 24;
+          if (snappedDir === null && !nearFull && !savedRect) {
+            const pos = await appWin.outerPosition();
+            savedRect = { x: pos.x, y: pos.y, w: size.width, h: size.height };
+          }
+          const g = snapGeometries(wa)[dir];
+          if (!g) return;
+          await appWin.setPosition(physPos(g));
+          await fitSize(g.w, g.h);
+          snappedDir = dir;
+          syncMax();
+          persistWindowState(null);
+        } catch (e) {}
+      }
+
+      // 由 screen 坐标判定贴靠区（视口边缘热区 24px 内）：
+      // 左/右边缘 → 半屏；左上/右上/左下/右下角 → 象限；其余 → null
+      function snapDirAtScreen(sx, sy, wa) {
+        const EDGE = 24;
+        const halfW = wa[2] / 2;
+        const halfH = wa[3] / 2;
+        const left = sx >= wa[0] && sx <= wa[0] + EDGE;
+        const right = sx >= wa[0] + wa[2] - EDGE && sx <= wa[0] + wa[2];
+        const top = sy <= wa[1] + EDGE;
+        const bottom = sy >= wa[1] + wa[3] - EDGE;
+        if (left && top) return "up-left";
+        if (left && bottom) return "down-left";
+        if (right && top) return "up-right";
+        if (right && bottom) return "down-right";
+        if (left && sy >= wa[1] + halfH - EDGE && sy <= wa[1] + halfH + EDGE) return "left"; // 左缘中段 → 左半屏
+        if (right && sy >= wa[1] + halfH - EDGE && sy <= wa[1] + halfH + EDGE) return "right"; // 右缘中段 → 右半屏
+        return null;
+      }
+
+      // Win+方向键：←/→ 左右半屏；↑ 最大化（复用）；↓ 还原/最小化
+      document.addEventListener("keydown", function (e) {
+        if (IS_MAC) return; // macOS 原生全屏语义不同，不混淆
+        if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        var k = e.key;
+        if (k !== "ArrowLeft" && k !== "ArrowRight" && k !== "ArrowUp" && k !== "ArrowDown") return;
+        e.preventDefault();
+        if (k === "ArrowLeft") { snapTo("left"); }
+        else if (k === "ArrowRight") { snapTo("right"); }
+        else if (k === "ArrowUp") {
+          if (snappedDir) { snappedDir = null; toggleMaximize(); }
+          else { toggleMaximize(); }
+        }
+        else { // ArrowDown
+          if (snappedDir) {
+            snappedDir = null;
+            if (savedRect) {
+              appWin.setPosition(physPos(savedRect));
+              fitSize(savedRect.w, savedRect.h);
+            }
+          } else {
+            appWin.minimize();
+          }
+        }
+      });
+
       // 双击拖拽区：Windows 伪最大化/还原；macOS 切换原生全屏（绿色按钮同款行为，
       // 由系统全屏空间 + 动画完成；无边框窗口曾因无红绿灯而无法全屏）
       const drag = document.getElementById("drag-region");
@@ -620,16 +730,61 @@
           toggleMaximize();
         }
       });
-      // 单击拖动窗口：mousedown 延迟 startDragging（event.detail 区分双击，避免吞掉双击）
+      // 单击拖动窗口：自绘拖拽（mousedown 延迟 150ms 区分双击；若用系统
+      // startDragging 则拿不到松手位置，无法做边缘贴靠热区判定）。
+      // 松手时检测屏幕边缘热区：命中 → 贴靠；未命中 → 停留在新位置。
       drag.addEventListener("mousedown", function (e) {
         if (e.detail > 1) return;
-        var t = setTimeout(function () { appWin.startDragging(); }, 150);
+        if (e.button !== 0) return;
+        var t = setTimeout(function () {
+          startDrag(e);
+        }, 150);
         drag.addEventListener(
           "mouseup",
           function () { clearTimeout(t); },
           { once: true }
         );
       });
+      function startDrag(e) {
+        // 贴靠态开始拖拽 → 立即还原（Windows 行为：拖动贴靠窗口先还原再跟随）
+        if (snappedDir && savedRect) {
+          snappedDir = null;
+          appWin.setPosition(physPos(savedRect));
+          fitSize(savedRect.w, savedRect.h);
+        }
+        const sx = e.screenX;
+        const sy = e.screenY;
+        let origin = null;
+        function onMove(ev) {
+          (async function () {
+            if (!origin) {
+              const pos = await appWin.outerPosition();
+              origin = { x: pos.x, y: pos.y };
+            }
+            const dx = ev.screenX - sx;
+            const dy = ev.screenY - sy;
+            await appWin.setPosition(
+              new window.__TAURI__.window.PhysicalPosition(origin.x + dx, origin.y + dy)
+            );
+          })().catch(function () {});
+        }
+        function onUp(ev) {
+          window.removeEventListener("mousemove", onMove);
+          // 屏幕边缘热区命中 → 贴靠（Windows 11 拖拽贴靠手感）；
+          // 未命中 → 已还原且跟随鼠标，停留当前位置。
+          (async function () {
+            try {
+              const wa = await getWorkArea();
+              if (!wa) return;
+              const dir = snapDirAtScreen(ev.screenX, ev.screenY, wa);
+              if (dir) await snapTo(dir);
+            } catch (err) {}
+          })();
+          syncMax();
+        }
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp, { once: true });
+      }
 
       // ===== 自绘边缘 resize（窗口无 WS_THICKFRAME，边缘热区拖拽调整大小）=====
       const MIN_W = 860;
