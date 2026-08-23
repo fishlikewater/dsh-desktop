@@ -1225,7 +1225,19 @@
           }
           // 交由 2s 轮询检测到服务后自动进入
         } catch (e) {
-          errEl.textContent = String(e);
+          const msg = String(e);
+          errEl.textContent = msg;
+          // Task 15：未找到 dsh CLI → 安装引导（sidecar 已评估放弃，
+          // 用户预装 npm 全局 dsh 是最低摩擦路径）
+          if (msg.indexOf("未找到 dsh") === 0) {
+            const guide = document.createElement("div");
+            guide.className = "err install-guide";
+            guide.textContent = "安装 DSH：npm install -g dsh（需 Node.js ≥ 18）；";
+            const guide2 = document.createElement("div");
+            guide2.className = "err install-guide";
+            guide2.textContent = "或设置 DSH_CLI 环境变量指向 dsh 后重启本应用";
+            errEl.append(guide, guide2);
+          }
         } finally {
           startBtn.disabled = false;
           startBtn.textContent = "启动 DSH 服务";

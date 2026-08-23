@@ -92,6 +92,17 @@ node scripts/bench/baseline.mjs [exe路径] [采样秒数] [间隔ms]
 
 图标资源为 32x32 白描边圆点（深浅系统主题均可见），路径 `src-tauri/icons/tray-{on,off}.png`（编译期内嵌 `include_bytes!`）。
 
+## dsh sidecar 可行性结论（Task 15）
+
+**结论：放弃 sidecar 捆绑（方案 A），改纯安装引导。** 依据：
+
+1. `dsh` 是 npm 全局 shim（`dsh.cmd`/`dsh.ps1`，无 `dsh.exe`，见 `service.rs` 头注释）——`bundle.externalBin` 要求自包含可执行文件，shim 只是 node 脚本，无独立可执行产物；
+2. node 运行时不随壳分发：捆绑 node.exe（约 90MB）违反项目约束（不把 node 运行时塞进 resources 冒充 sidecar），且 `dsh` 的 node_modules 依赖不在壳项目交付边界——捆绑等于重打包 DSH 本体；
+3. `tauri.conf.json` 现有 `resources` 仅做普通文件拷贝（WebView2Loader.dll），不走 sidecar 通道——捆绑 shim 无意义（目标机仍需 node）；
+4. 现有探测已覆盖 `DSH_CLI` 环境变量 + PATH（`.cmd > .exe > .ps1`），用户预装是最低摩擦路径。
+
+**安装引导**：覆盖层启动失败且错误含「未找到 dsh」时，前端展示安装指引（npm 全局安装命令 + `DSH_CLI` 覆盖提示），用户可自助安装后重试。
+
 ## 多会话窗口（冒烟局限记录）
 
 Windows WebView2 创建第二个 WebView 后，主窗口的 CDP `Runtime.evaluate` 会失效（多 WebView 共享调试 session 的平台限制），因此：
