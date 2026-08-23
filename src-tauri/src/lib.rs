@@ -51,6 +51,7 @@ pub fn run() {
             settings::update_check,
             settings::update_install,
             settings::open_log_dir,
+            settings::read_log_tail,
             config::load_window_state,
             config::save_window_state,
             config::get_close_behavior,

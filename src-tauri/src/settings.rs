@@ -121,3 +121,92 @@ fn open_dir_in_file_manager(dir: &Path) -> std::io::Result<()> {
         .spawn()
         .map(|_| ())
 }
+
+// ===== 应用内日志查看器（Task 16）=====
+
+/// 读尾默认行数（1MB 轮转文件内，500 行覆盖最近诊断窗口）
+pub const LOG_TAIL_DEFAULT: usize = 500;
+
+/// 读取日志文件末尾 N 行（纯函数，路径可注入便于单测）。
+/// - 文件不存在/读失败 → 可读错误（不 panic）；
+/// - 空文件 → 空列表；
+/// - 行数 < N → 全量（保持行序）。
+pub fn tail_lines(path: &Path, n: usize) -> Result<Vec<String>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("读取日志失败（{}）: {e}", path.display()))?;
+    let lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+    let skip = lines.len().saturating_sub(n);
+    Ok(lines.into_iter().skip(skip).collect())
+}
+
+/// 读取当前应用日志末尾 N 行（设置页面板展示）。
+/// 同步 command（读 500 行毫秒级；async 会触发 windows-gnu 链接 bug）。
+#[tauri::command]
+pub fn read_log_tail(app: tauri::AppHandle, n: Option<usize>) -> Result<Vec<String>, String> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("获取日志目录失败: {e}"))?;
+    let path = dir.join("dsh-desktop.log");
+    tail_lines(&path, n.unwrap_or(LOG_TAIL_DEFAULT))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tail_lines;
+    use std::path::Path;
+
+    fn tmp_file(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("dsh-tail-{}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn tail_empty_file_returns_empty() {
+        let p = tmp_file("empty.log");
+        std::fs::write(&p, "").unwrap();
+        let r = tail_lines(&p, 10).unwrap();
+        assert!(r.is_empty(), "空文件应返回空列表");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn tail_short_file_returns_all_lines() {
+        let p = tmp_file("short.log");
+        std::fs::write(&p, "a\nb\nc\n").unwrap();
+        let r = tail_lines(&p, 10).unwrap();
+        assert_eq!(r, vec!["a", "b", "c"], "文件 < N 行应全量且行序正确");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn tail_long_file_returns_last_n_in_order() {
+        let p = tmp_file("long.log");
+        let content: String = (1..=100).map(|i| format!("line-{i}\n")).collect();
+        std::fs::write(&p, content).unwrap();
+        let r = tail_lines(&p, 5).unwrap();
+        assert_eq!(
+            r,
+            vec!["line-96", "line-97", "line-98", "line-99", "line-100"],
+            "应取末 N 行且行序正确"
+        );
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn tail_n_zero_returns_empty() {
+        let p = tmp_file("nzero.log");
+        std::fs::write(&p, "a\nb\n").unwrap();
+        let r = tail_lines(&p, 0).unwrap();
+        assert!(r.is_empty());
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn tail_missing_file_returns_error_not_panic() {
+        let p = Path::new("Z:\\definitely\\missing\\dsh-desktop.log");
+        let r = tail_lines(p, 10);
+        assert!(r.is_err(), "不存在的文件应返回可读错误而非 panic");
+        let msg = r.unwrap_err();
+        assert!(msg.contains("读取日志失败"), "错误应可读: {msg}");
+    }
+}

@@ -228,6 +228,35 @@
         justify-content: center;
       }
       #settings-modal.show { display: flex; }
+      /* 日志查看面板（Task 16）：复用弹层骨架，内容为读尾 <pre> */
+      #log-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 65;
+        background: rgba(0, 0, 0, 0.30);
+        align-items: center;
+        justify-content: center;
+      }
+      #log-modal.show { display: flex; }
+      .log-card { width: 640px; max-width: calc(100% - 48px); padding: 24px; }
+      .log-card .settings-head { margin-bottom: 12px; }
+      .log-actions { display: flex; gap: 8px; align-items: center; }
+      .log-content {
+        height: 360px;
+        overflow: auto;
+        font-size: 11.5px;
+        line-height: 1.55;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        background: var(--code-bg);
+        color: var(--fg);
+        padding: 10px 12px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+      }
+      .log-empty { color: var(--muted); }
       .settings-card {
         width: 420px;
         max-width: calc(100% - 48px);
@@ -438,9 +467,23 @@
             <button id="settings-update-install" class="mini" disabled>更新</button>
           </div>
           <div class="settings-row">
-            <span class="label">日志目录</span>
-            <button id="settings-open-logs" class="mini">打开</button>
+            <span class="label">日志</span>
+            <button id="settings-view-logs" class="mini">查看</button>
+            <button id="settings-open-logs" class="mini">打开目录</button>
           </div>
+        </div>
+      </div>
+      <!-- 日志查看面板（Task 16：应用内读尾） -->
+      <div id="log-modal">
+        <div class="card log-card">
+          <div class="settings-head">
+            <h1>应用日志（末 500 行）</h1>
+            <div class="log-actions">
+              <button id="log-refresh" class="mini">刷新</button>
+              <button id="log-close" title="关闭" aria-label="关闭">×</button>
+            </div>
+          </div>
+          <pre id="log-content" class="log-content"></pre>
         </div>
       </div>
     </div>
@@ -1208,6 +1251,37 @@
         invoke("open_log_dir").catch(function (e) {
           settingsUpdateResult.textContent = String(e);
         });
+      });
+
+      // ===== 应用内日志查看器（Task 16）=====
+      const logModal = document.getElementById("log-modal");
+      const logContent = document.getElementById("log-content");
+      const logRefresh = document.getElementById("log-refresh");
+      const logClose = document.getElementById("log-close");
+      async function loadLogTail() {
+        logContent.classList.remove("log-empty");
+        logContent.textContent = "加载中…";
+        try {
+          const lines = await invoke("read_log_tail", { n: 500 });
+          if (!lines || lines.length === 0) {
+            logContent.classList.add("log-empty");
+            logContent.textContent = "暂无日志（应用启动后自动写入）";
+          } else {
+            logContent.textContent = lines.join("\n");
+          }
+        } catch (e) {
+          logContent.classList.add("log-empty");
+          logContent.textContent = String(e);
+        }
+      }
+      document.getElementById("settings-view-logs").addEventListener("click", function () {
+        logModal.classList.add("show");
+        loadLogTail();
+      });
+      logRefresh.addEventListener("click", loadLogTail);
+      logClose.addEventListener("click", function () { logModal.classList.remove("show"); });
+      logModal.addEventListener("click", function (e) {
+        if (e.target === logModal) logModal.classList.remove("show");
       });
 
       // ===== 拉起 DSH 服务（T5.1：方案 B 纯拉起，不捆绑 sidecar）=====
