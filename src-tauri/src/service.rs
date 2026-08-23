@@ -183,7 +183,7 @@ pub fn dsh_version() -> String {
     // Windows：dsh 是 .cmd/.ps1 shim（经 cmd/powershell 执行）；
     // macOS/Linux：dsh 是带 shebang 的 node 脚本，直接 exec。
     #[cfg(target_os = "windows")]
-    let (cmd, mut args) = dsh_command_parts(&dsh);
+    let (cmd, args) = dsh_command_parts(&dsh);
     #[cfg(not(target_os = "windows"))]
     let (cmd, args) = (dsh.clone(), Vec::<String>::new());
     let mut child = match std::process::Command::new(&cmd)
