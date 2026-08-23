@@ -112,8 +112,20 @@ fn session_seq() -> &'static std::sync::atomic::AtomicU32 {
 
 /// 打开新会话窗口（托盘「新建会话」/前端调用）。
 /// url 为空时用当前配置的 DSH 地址；返回新窗口 label。
+///
+/// **注意**：窗口创建（WebviewWindowBuilder::build）必须回到主线程，
+/// 在 IPC 同步命令线程直接调用会与主线程互等（死锁——CI 冒烟实测
+/// 8s 超时特征）。因此同步命令仅计算参数并立即返回 label，实际创建
+/// 通过 `tauri::async_runtime::spawn` 在异步运行时执行（不触发
+/// windows-gnu 下 async command 的链接 bug——命令签名保持同步）。
 #[tauri::command]
 pub fn open_session_window(app: tauri::AppHandle, url: Option<String>) -> Result<String, String> {
+    Ok(spawn_session_window(&app, url))
+}
+
+/// 异步创建会话窗口（spawn 内执行；供命令与托盘事件共用）。
+/// 创建成功后重建托盘菜单（窗口列表项即时出现）。
+pub fn spawn_session_window(app: &tauri::AppHandle, url: Option<String>) -> String {
     let target = url
         .filter(|u| !u.trim().is_empty())
         .unwrap_or_else(|| crate::config::dsh_url().to_string());
@@ -121,14 +133,23 @@ pub fn open_session_window(app: tauri::AppHandle, url: Option<String>) -> Result
         "session-{}",
         session_seq().fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     );
-    let encoded = crate::config::encode_query_param(
-        &tauri::Url::parse(&target).unwrap_or_else(|_| crate::config::dsh_url()),
-    );
-    let initial_url = WebviewUrl::App(format!("index.html?dsh={encoded}").into());
-    let title = format!("DSH 会话 - {target}");
-    create_session_window(&app, &label, &title, initial_url)
-        .map(|_| label.clone())
-        .map_err(|e| format!("创建会话窗口失败: {e}"))
+    let app = app.clone();
+    let label_ret = label.clone();
+    tauri::async_runtime::spawn(async move {
+        let encoded = crate::config::encode_query_param(
+            &tauri::Url::parse(&target).unwrap_or_else(|_| crate::config::dsh_url()),
+        );
+        let initial_url = WebviewUrl::App(format!("index.html?dsh={encoded}").into());
+        let title = format!("DSH 会话 - {target}");
+        match create_session_window(&app, &label, &title, initial_url) {
+            Ok(_) => {
+                log::info!(target: "window", "会话窗口已创建 {label}");
+                crate::tray::rebuild_tray_menu(&app);
+            }
+            Err(e) => log::error!(target: "window", "创建会话窗口失败 {label}: {e}"),
+        }
+    });
+    label_ret
 }
 
 /// 列出全部会话窗口 label（冒烟断言/托盘重建同源逻辑）。
@@ -142,6 +163,7 @@ pub fn list_session_windows(app: tauri::AppHandle) -> Vec<String> {
 }
 
 /// 关闭指定会话窗口（冒烟清理/托盘「关闭会话」）。
+/// 销毁需要回主线程 → spawn 内执行，命令立即返回。
 #[tauri::command]
 pub fn close_session_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
     if label == crate::config::MAIN_WINDOW {
@@ -150,8 +172,12 @@ pub fn close_session_window(app: tauri::AppHandle, label: String) -> Result<(), 
     let Some(w) = app.get_webview_window(&label) else {
         return Err(format!("会话窗口不存在: {label}"));
     };
-    crate::tray::on_session_window_closed(&app, &label);
-    let _ = w.destroy();
+    let app2 = app.clone();
+    let label2 = label.clone();
+    tauri::async_runtime::spawn(async move {
+        crate::tray::on_session_window_closed(&app2, &label2);
+        let _ = w.destroy();
+    });
     Ok(())
 }
 

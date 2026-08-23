@@ -95,8 +95,8 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             // Task 14：新建会话窗口
             "new-session" => {
                 log::info!(target: "tray", "menu: new-session");
+                // spawn_session_window 内部创建成功后重建菜单（含新窗口项）
                 let _ = crate::window::open_session_window(app.clone(), None);
-                rebuild_tray_menu(app);
             }
             "autostart" => {
                 let mgr = app.autolaunch();

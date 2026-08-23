@@ -112,9 +112,15 @@ pub fn run() {
                     log::info!(target: "window", "会话窗口关闭请求 -> 销毁（{}）", window.label());
                     let app = window.app_handle().clone();
                     let label = window.label().to_string();
-                    let _ = window.close();
-                    tray::on_session_window_closed(&app, &label);
                     api.prevent_close();
+                    // 销毁需回主线程（事件处理器内直接 destroy 有重入风险）：
+                    // spawn 延迟到事件处理完成后执行，并同步刷新托盘列表。
+                    tauri::async_runtime::spawn(async move {
+                        tray::on_session_window_closed(&app, &label);
+                        if let Some(w) = app.get_webview_window(&label) {
+                            let _ = w.destroy();
+                        }
+                    });
                     return;
                 }
                 // 读最新落盘值（开关切换即时生效，不依赖进程内缓存）
