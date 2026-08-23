@@ -15,10 +15,9 @@
 //!   process_group(0)），无 libc 依赖（近似 Windows 的 taskkill /T）；
 //! - 其他 Unix：stub（返回可读错误）。
 //!
-//! 测试说明：service 逻辑无自动化单测——windows-gnu 下 lib 单测中调用
-//! fs/env/PathBuf 等 API 或声明 `std::process::Child` 类型的 static 会触发
-//! rustc 链接 bug（0xc0000139），T5.1 已用手工冒烟验证（假 dsh 拉起/停止）。
-//! 详见 docs/testing.md。
+//! 测试说明：0xc0000139 链接 bug（Task 2 已修：windows-gnu 测试 exe 缺 Common
+//! Controls v6 manifest）修复后，服务逻辑的纯函数（探测决策、命令构造）可在
+//! 全平台跑单测；真实 env/fs 交互仍只在本机冒烟（macOS e2e 假 dsh 用例）。
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::path::{Path, PathBuf};
@@ -54,8 +53,8 @@ fn find_dsh_in(paths: &[PathBuf], candidates: &[&str]) -> Option<PathBuf> {
 }
 
 /// 带"存在性判断"的查找内核：生产代码传 p.is_file()；验证可注入模拟 exists。
-#[cfg(target_os = "windows")]
-#[doc(hidden)]
+/// 平台无关纯函数（无 fs/env 依赖），windows 与 macOS 生产共用，测试全平台可跑。
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 pub fn find_dsh_in_with<F: Fn(&Path) -> bool>(
     paths: &[PathBuf],
     candidates: &[&str],
@@ -72,15 +71,28 @@ pub fn find_dsh_in_with<F: Fn(&Path) -> bool>(
     None
 }
 
+/// 解析 DSH_CLI 环境变量覆盖（可注入 env 值与 exists 判断的纯函数）：
+/// 有值且指向存在的文件 → Some(path)；否则（未设置/路径不存在）→ None。
+/// 平台无关，供 windows 与 macOS 探测共用，测试全平台可跑。
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
+fn resolve_dsh_cli_with<F: Fn(&Path) -> bool>(
+    env_value: Option<&std::ffi::OsStr>,
+    exists: F,
+) -> Option<PathBuf> {
+    let v = env_value?;
+    let p = PathBuf::from(v);
+    exists(&p).then_some(p)
+}
+
 /// 查找 dsh CLI：DSH_CLI 环境变量 > PATH 搜索。
 #[cfg(target_os = "windows")]
 pub fn find_dsh() -> Option<PathBuf> {
-    if let Some(v) = std::env::var_os("DSH_CLI") {
-        let p = PathBuf::from(v);
-        if p.is_file() {
-            return Some(p);
-        }
-        log::warn!(target: "service", "DSH_CLI 指定的路径不存在: {}", p.display());
+    let env_override = std::env::var_os("DSH_CLI");
+    if let Some(p) = resolve_dsh_cli_with(env_override.as_deref(), |p| p.is_file()) {
+        return Some(p);
+    }
+    if env_override.is_some() {
+        log::warn!(target: "service", "DSH_CLI 指定的路径不存在，回退 PATH 搜索");
     }
     let paths: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|v| std::env::split_paths(&v).collect())
@@ -195,22 +207,20 @@ fn shell_probe(cmd: &mut std::process::Command, timeout: std::time::Duration) ->
 /// 查找 dsh CLI：DSH_CLI 环境变量 > PATH + 常见目录扫描 > 登录 shell 探测。
 #[cfg(target_os = "macos")]
 pub fn find_dsh_macos() -> Option<PathBuf> {
-    if let Some(v) = std::env::var_os("DSH_CLI") {
-        let p = PathBuf::from(v);
-        if p.is_file() {
-            return Some(p);
-        }
-        log::warn!(target: "service", "DSH_CLI 指定的路径不存在: {}", p.display());
+    let env_override = std::env::var_os("DSH_CLI");
+    if let Some(p) = resolve_dsh_cli_with(env_override.as_deref(), |p| p.is_file()) {
+        return Some(p);
+    }
+    if env_override.is_some() {
+        log::warn!(target: "service", "DSH_CLI 指定的路径不存在，回退常规探测");
     }
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|v| std::env::split_paths(&v).collect())
         .unwrap_or_default();
     dirs.extend(macos_path_dirs());
-    for dir in &dirs {
-        let p = dir.join("dsh");
-        if p.is_file() {
-            return Some(p);
-        }
+    // 目录+候选扫描与 windows 用同一内核（无平台依赖）
+    if let Some(p) = find_dsh_in_with(&dirs, &["dsh"], |p| p.is_file()) {
+        return Some(p);
     }
     // 兜底：登录 shell 已加载用户 PATH（zsh -i 会读 .zshrc）
     for shell in ["/bin/zsh", "/bin/bash"] {
@@ -415,38 +425,52 @@ pub fn stop_service() -> Result<String, String> {
     Err("当前平台暂不支持从壳层停止 DSH 服务（请手动结束 dsh 进程）".into())
 }
 
-/// 按扩展名选择启动方式拉起 dsh --profile web。
-/// 用 DETACHED_PROCESS(0x8) 不弹控制台窗口。
-#[cfg(target_os = "windows")]
-fn spawn_dsh(dsh: &Path) -> Result<u32, String> {
+/// 按扩展名选择启动程序与参数（纯函数，平台无关）：
+///
+/// - `.cmd` → `cmd /c "<path>" --profile web`
+/// - `.ps1` → `powershell -NoProfile -ExecutionPolicy Bypass -File "<path>" --profile web`
+/// - 其他/无扩展名 → `<path> --profile web`
+///
+/// 返回 (程序, 参数列表)；扩展名比较大小写不敏感（`.CMD`/`.Ps1` 同分支）。
+/// 生产仅 windows spawn_dsh 使用；测试全平台可跑（cfg(test) 下编译）。
+#[cfg(any(target_os = "windows", test))]
+fn dsh_command_parts(dsh: &Path) -> (String, Vec<String>) {
     let ext = dsh
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
-    let child = match ext.as_str() {
-        "cmd" => std::process::Command::new("cmd")
-            .args(["/c", dsh.to_str().unwrap_or_default(), "--profile", "web"])
-            .creation_flags(DETACHED_PROCESS)
-            .spawn(),
-        "ps1" => std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                dsh.to_str().unwrap_or_default(),
-                "--profile",
-                "web",
-            ])
-            .creation_flags(DETACHED_PROCESS)
-            .spawn(),
-        _ => std::process::Command::new(dsh)
-            .arg("--profile")
-            .arg("web")
-            .creation_flags(DETACHED_PROCESS)
-            .spawn(),
-    };
+    let path = dsh.to_string_lossy().into_owned();
+    match ext.as_str() {
+        "cmd" => (
+            "cmd".into(),
+            vec!["/c".into(), path, "--profile".into(), "web".into()],
+        ),
+        "ps1" => (
+            "powershell".into(),
+            vec![
+                "-NoProfile".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-File".into(),
+                path,
+                "--profile".into(),
+                "web".into(),
+            ],
+        ),
+        _ => (path, vec!["--profile".into(), "web".into()]),
+    }
+}
+
+/// 按扩展名选择启动方式拉起 dsh --profile web。
+/// 用 DETACHED_PROCESS(0x8) 不弹控制台窗口。
+#[cfg(target_os = "windows")]
+fn spawn_dsh(dsh: &Path) -> Result<u32, String> {
+    let (program, args) = dsh_command_parts(dsh);
+    let child = std::process::Command::new(program)
+        .args(&args)
+        .creation_flags(DETACHED_PROCESS)
+        .spawn();
     let child = child.map_err(|e| format!("拉起 dsh 失败: {e}"))?;
     let pid = child.id();
     // 句柄随 child drop 关闭，不影响子进程存活；记录 pid 供停止时 taskkill
@@ -455,13 +479,144 @@ fn spawn_dsh(dsh: &Path) -> Result<u32, String> {
     Ok(pid)
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests {
+    // ===== 平台无关纯函数测试（全平台可跑，含 CI windows-gnu） =====
+    use super::{dsh_command_parts, find_dsh_in_with, resolve_dsh_cli_with};
+    use std::path::PathBuf;
+
+    fn p(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    /// 候选顺序：目录顺序优先（外层），目录内按候选顺序（.cmd > .exe > .ps1）。
+    #[test]
+    fn find_dsh_prefers_cmd_over_exe_over_ps1() {
+        let dirs = vec![p("dirA")];
+        let candidates = ["dsh.cmd", "dsh.exe", "dsh.ps1", "dsh"];
+        let hit = find_dsh_in_with(&dirs, &candidates, |path| {
+            path.file_name().map(|n| n == "dsh.cmd").unwrap_or(false)
+        });
+        assert_eq!(hit, Some(p("dirA/dsh.cmd")));
+    }
+
+    /// 目录顺序：第一个目录命中即返回，不继续扫后续目录。
+    #[test]
+    fn find_dsh_stops_at_first_matching_dir() {
+        let dirs = vec![p("dirA"), p("dirB")];
+        let hit = find_dsh_in_with(&dirs, &["dsh.exe"], |path| {
+            *path == p("dirA/dsh.exe")
+        });
+        assert_eq!(hit, Some(p("dirA/dsh.exe")));
+    }
+
+    /// 全部候选缺失 → None。
+    #[test]
+    fn find_dsh_returns_none_when_nothing_exists() {
+        let dirs = vec![p("C:\\zero")];
+        assert_eq!(find_dsh_in_with(&dirs, &["dsh"], |_| false), None);
+    }
+
+    /// 空目录列表 → None（不 panic）。
+    #[test]
+    fn find_dsh_handles_empty_dirs() {
+        assert_eq!(find_dsh_in_with(&[], &["dsh"], |_| true), None);
+    }
+
+    /// 存在性判断的注入有效性：模拟 exists 只认目标文件，其余一律不存在。
+    #[test]
+    fn find_dsh_honors_injected_exists() {
+        let dirs = vec![p("/tmp/x")];
+        let existent = p("/tmp/x/dsh");
+        let hit = find_dsh_in_with(&dirs, &["dsh"], |path| *path == existent);
+        assert_eq!(hit, Some(existent));
+        // 换一个候选：dsh 不存在 → None
+        let dirs2 = vec![p("/tmp/y")];
+        assert_eq!(find_dsh_in_with(&dirs2, &["dsh"], |_| false), None);
+    }
+
+    /// DSH_CLI 覆盖：值为存在文件 → 采用（优先于 PATH 扫描，由调用方保证顺序）。
+    #[test]
+    fn resolve_dsh_cli_uses_existing_override() {
+        let hit = resolve_dsh_cli_with(Some(std::ffi::OsStr::new("D:\\dsh.exe")), |path| {
+            *path == p("D:\\dsh.exe")
+        });
+        assert_eq!(hit, Some(p("D:\\dsh.exe")));
+    }
+
+    /// DSH_CLI 覆盖：值为不存在文件 → None（调用方回退 PATH 搜索）。
+    #[test]
+    fn resolve_dsh_cli_rejects_missing_path() {
+        let hit = resolve_dsh_cli_with(Some(std::ffi::OsStr::new("D:\\nope.exe")), |_| false);
+        assert_eq!(hit, None);
+    }
+
+    /// DSH_CLI 覆盖：未设置（None）→ None。
+    #[test]
+    fn resolve_dsh_cli_none_when_env_unset() {
+        assert_eq!(resolve_dsh_cli_with(None, |_| true), None);
+    }
+
+    /// 命令构造 .cmd 分支。
+    #[test]
+    fn dsh_command_cmd_uses_cmd_wrapper() {
+        let (prog, args) = dsh_command_parts(PathBuf::from("C:\\dsh\\dsh.cmd").as_path());
+        assert_eq!(prog, "cmd");
+        assert_eq!(
+            args,
+            vec!["/c", "C:\\dsh\\dsh.cmd", "--profile", "web"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// 命令构造 .ps1 分支（含参数顺序与 ExecutionPolicy Bypass）。
+    #[test]
+    fn dsh_command_ps1_uses_powershell_wrapper() {
+        let (prog, args) = dsh_command_parts(PathBuf::from("C:\\dsh\\dsh.ps1").as_path());
+        assert_eq!(prog, "powershell");
+        assert_eq!(
+            args,
+            vec![
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "C:\\dsh\\dsh.ps1",
+                "--profile",
+                "web",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
+        );
+    }
+
+    /// 命令构造默认分支：无扩展名/exe 直接执行。
+    #[test]
+    fn dsh_command_default_direct_exec() {
+        let (prog, args) = dsh_command_parts(PathBuf::from("C:\\dsh\\dsh.exe").as_path());
+        assert_eq!(prog, "C:\\dsh\\dsh.exe");
+        assert_eq!(args, vec!["--profile", "web"]);
+    }
+
+    /// 扩展名大小写不敏感：`.CMD` 走 cmd 分支、`.PS1` 走 powershell 分支。
+    #[test]
+    fn dsh_command_extension_case_insensitive() {
+        let (prog, _) = dsh_command_parts(PathBuf::from("C:\\dsh\\dsh.CMD").as_path());
+        assert_eq!(prog, "cmd");
+        let (prog, _) = dsh_command_parts(PathBuf::from("C:\\dsh\\dsh.Ps1").as_path());
+        assert_eq!(prog, "powershell");
+    }
+
+    #[cfg(target_os = "macos")]
     use super::find_dsh_macos;
 
     /// 环境相关冒烟（仅 macOS 本机）：装有 dsh 时探测结果必须存在；
     /// 未安装 dsh 时跳过（不失败）。CI 为 windows-gnu，不会执行。
     #[test]
+    #[cfg(target_os = "macos")]
     fn macos_find_dsh_returns_existing_file_when_installed() {
         if let Some(p) = find_dsh_macos() {
             assert!(p.is_file(), "探测到的 dsh 不存在: {}", p.display());
@@ -472,6 +627,7 @@ mod tests {
     /// → stop_service 进程组终止（含脚本子进程）。DSH_URL 指向空闲端口，
     /// 不触碰真实 dsh/服务。CI 为 windows-gnu，不会执行此测试。
     #[test]
+    #[cfg(target_os = "macos")]
     fn macos_start_stop_fake_dsh_end_to_end() {
         use std::os::unix::fs::PermissionsExt;
 

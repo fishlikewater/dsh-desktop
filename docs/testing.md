@@ -23,12 +23,12 @@ npm run check
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-覆盖范围（基线统计）：config.rs 13 例、theme.rs 9 例、window.rs 5 例、service.rs 2 例（macOS 端到端）。
+覆盖范围（基线统计）：config.rs 13 例、theme.rs 9 例、window.rs 5 例、service.rs 14 例（12 平台无关纯逻辑 + 2 macOS 端到端）。
 
-> **windows-gnu 已知限制**：在 `x86_64-pc-windows-gnu` 工具链下，测试二进制若引用 `std::process::Child` 类型的 static、fs/env/PathBuf API 或 async tauri command，会触发 rustc 链接 bug（加载失败 `0xc0000139`）。因此：
-> - 服务进程句柄不存 static（用 `OnceLock<Mutex<Option<u32>>>` 存 pid）；
+> **windows-gnu 已知限制**：此前在 `x86_64-pc-windows-gnu` 工具链下，测试二进制加载失败（`0xc0000139`），曾归因于引用 `std::process::Child` 类型的 static、fs/env/PathBuf API 或 async tauri command；实际根因是测试 exe 缺 Common Controls v6 manifest（已于 CI 修复，见 `.github/workflows/ci.yml` 单元测试步骤）。当前约束：
+> - 服务进程句柄不存 static（用 `OnceLock<Mutex<Option<u32>>>` 存 pid），保持架构简洁；
 > - 新增 tauri command 保持同步化（`tauri::async_runtime::block_on`），如 `update_check`/`update_install` 的先例；
-> - 纯逻辑（路径探测、命令构造）与 FFI 分离，测试在非 windows-gnu 或 CI 环境运行。
+> - 服务纯逻辑（路径探测 `find_dsh_in_with`、DSH_CLI 解析 `resolve_dsh_cli_with`、命令构造 `dsh_command_parts`）与 FFI 分离，测试全平台运行（CI windows-gnu 亦覆盖）。
 
 ## 端到端冒烟（CDP）
 
