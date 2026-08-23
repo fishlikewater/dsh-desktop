@@ -630,7 +630,13 @@ mod tests {
     #[test]
     fn clamp_handles_zero_work_area_without_panicking() {
         // 工作区异常（0x0）：不得 panic（Task 11 暴露的边界回归）
-        let state = WindowState { x: 100, y: 50, w: 800, h: 600, maximized: false };
+        let state = WindowState {
+            x: 100,
+            y: 50,
+            w: 800,
+            h: 600,
+            maximized: false,
+        };
         let c = clamp_window_state(state, (0, 0, 0, 0));
         assert_eq!((c.w, c.h), (1, 1), "0 工作区至少 1x1");
         assert_eq!((c.x, c.y), (0, 0), "位置归位为 (0,0)");
