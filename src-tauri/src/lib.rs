@@ -50,7 +50,9 @@ pub fn run() {
             settings::autostart_toggle,
             settings::update_check,
             settings::update_install,
-            settings::open_log_dir
+            settings::open_log_dir,
+            config::load_window_state,
+            config::save_window_state
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

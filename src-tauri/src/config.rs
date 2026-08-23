@@ -30,6 +30,18 @@ pub fn shell_config_path() -> PathBuf {
         .join("config.json")
 }
 
+/// 窗口几何记忆：左上角坐标 + 尺寸（物理像素）与最大化态。
+/// 序列化进壳层 config.json（windows 伪最大化语义；macOS 只记几何）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowState {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    #[serde(default)]
+    pub maximized: bool,
+}
+
 /// 壳层配置（未知字段忽略；缺失/损坏回退默认）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ShellConfig {
@@ -39,6 +51,9 @@ pub struct ShellConfig {
     /// DSH 数据目录覆盖（环境变量 DSH_HOME 优先）
     #[serde(default)]
     pub dsh_home: Option<String>,
+    /// 上次会话的窗口几何（无记忆为 None → 启动走默认居中）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_state: Option<WindowState>,
 }
 
 impl ShellConfig {
@@ -54,6 +69,19 @@ impl ShellConfig {
             },
             Err(_) => ShellConfig::default(),
         }
+    }
+
+    /// 写回磁盘（原子写：临时文件 + rename，避免半截文件）。
+    /// 父目录不存在时创建（%APPDATA%\com.dsh.desktop 首启可能没有）。
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("json.tmp");
+        let text = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        std::fs::write(&tmp, text)?;
+        std::fs::rename(&tmp, path)
     }
 }
 
@@ -171,6 +199,55 @@ pub fn theme_settings_path() -> PathBuf {
     Path::new(&home).join("settings.yaml")
 }
 
+/// 读取持久化的窗口状态，并 clamp 进当前工作区（记忆超出新显示器/工作区时
+/// 自动收缩拉回，前端拿到的即是可落地几何）。
+/// 前端在 show 回调后调用（隐藏窗口上 setPosition 无效）。
+#[tauri::command]
+pub fn load_window_state(window: tauri::WebviewWindow) -> WindowState {
+    let state = shell_config().window_state.unwrap_or_default();
+    let Some(wa) = crate::window::work_area(window) else {
+        return state;
+    };
+    clamp_window_state(state, (wa.0, wa.1, wa.2.max(0) as u32, wa.3.max(0) as u32))
+}
+
+/// 持久化窗口状态（几何 + 最大化态）。
+/// 在内存缓存配置上更新 window_state 再整份写回（保留 dsh_url/dsh_home 等字段）。
+#[tauri::command]
+pub fn save_window_state(state: WindowState) -> Result<(), String> {
+    let path = shell_config_path();
+    let mut cfg = shell_config().clone();
+    // 无效几何防御：w/h 为 0（窗口尚未布局完成时前端采样）不落盘
+    if state.w == 0 || state.h == 0 {
+        return Ok(());
+    }
+    cfg.window_state = Some(state);
+    cfg.save_to(&path)
+        .map_err(|e| format!("保存窗口状态失败（{}）: {e}", path.display()))
+}
+
+/// 把记忆几何夹取进当前工作区（纯函数，便于单测）：
+///
+/// - 尺寸：记忆超出工作区 → 缩小到工作区（保留最小约束由调用方负责）；
+/// - 位置：左上角夹取到工作区内，并保证窗口不越出右/下边界。
+///
+/// 工作区输入为 [x, y, width, height]（与 work_area 命令一致）。
+pub fn clamp_window_state(state: WindowState, wa: (i32, i32, u32, u32)) -> WindowState {
+    let (wa_x, wa_y, wa_w, wa_h) = wa;
+    let w = state.w.min(wa_w.max(1));
+    let h = state.h.min(wa_h.max(1));
+    // 位置：至少与工作区左/上沿对齐；窗口超出右/下沿时拉回
+    let x = state.x.clamp(wa_x, wa_x + wa_w as i32 - w as i32);
+    let y = state.y.clamp(wa_y, wa_y + wa_h as i32 - h as i32);
+    WindowState {
+        x,
+        y,
+        w,
+        h,
+        maximized: state.maximized,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +359,130 @@ mod tests {
         let encoded = encode_query_param(&url);
         let decoded = percent_decode(&encoded);
         assert_eq!(decoded, url.as_str());
+    }
+
+    // ===== 窗口状态记忆 =====
+
+    #[test]
+    fn window_state_serde_round_trip() {
+        let cfg = ShellConfig {
+            window_state: Some(WindowState {
+                x: 12,
+                y: 34,
+                w: 1000,
+                h: 700,
+                maximized: true,
+            }),
+            ..Default::default()
+        };
+        let text = serde_json::to_string(&cfg).unwrap();
+        let back: ShellConfig = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.window_state, cfg.window_state);
+    }
+
+    #[test]
+    fn window_state_missing_field_defaults() {
+        // 旧 config（无 window_state 字段）解析为 None
+        let cfg = parse(r#"{"dsh_url": "http://x:1"}"#);
+        assert!(cfg.window_state.is_none());
+        // 部分字段缺失 → 默认 0
+        let cfg = parse(r#"{"window_state": {"x": 1, "y": 2, "w": 800, "h": 600}}"#);
+        let s = cfg.window_state.expect("应有 window_state");
+        assert_eq!(s.x, 1);
+        assert!(!s.maximized, "缺失 maximized 应默认 false");
+    }
+
+    #[test]
+    fn save_to_round_trip_preserves_all_fields() {
+        let dir = std::env::temp_dir().join(format!("dsh-config-test-{}", std::process::id()));
+        let path = dir.join("config.json");
+        let cfg = ShellConfig {
+            dsh_url: Some("http://127.0.0.1:9999".into()),
+            dsh_home: Some("D:/data".into()),
+            window_state: Some(WindowState {
+                x: 5,
+                y: 6,
+                w: 900,
+                h: 650,
+                maximized: false,
+            }),
+        };
+        cfg.save_to(&path).expect("save_to 应成功");
+        let back = ShellConfig::load_from(&path);
+        assert_eq!(back.dsh_url, cfg.dsh_url);
+        assert_eq!(back.dsh_home, cfg.dsh_home);
+        assert_eq!(back.window_state, cfg.window_state);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_to_creates_missing_parent_dir() {
+        let dir = std::env::temp_dir().join(format!("dsh-config-nested-{}", std::process::id()));
+        let path = dir.join("a").join("b").join("config.json");
+        ShellConfig::default()
+            .save_to(&path)
+            .expect("嵌套父目录应自动创建");
+        assert!(path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clamp_keeps_state_within_work_area() {
+        let state = WindowState {
+            x: 100,
+            y: 100,
+            w: 1000,
+            h: 700,
+            maximized: false,
+        };
+        let wa = (0, 0, 1280, 840);
+        let c = clamp_window_state(state, wa);
+        assert_eq!(c, state); // 工作区足够 → 原样保留
+    }
+
+    #[test]
+    fn clamp_shrinks_oversized_memory() {
+        // 记忆 2000x1200，新工作区只有 1280x840 → 缩到工作区
+        let state = WindowState {
+            x: 50,
+            y: 50,
+            w: 2000,
+            h: 1200,
+            maximized: false,
+        };
+        let wa = (0, 0, 1280, 840);
+        let c = clamp_window_state(state, wa);
+        assert_eq!((c.w, c.h), (1280, 840));
+    }
+
+    #[test]
+    fn clamp_pulls_off_screen_position_back_in() {
+        // 位置在工作区外（负坐标 / 超出右边界）→ 拉回工作区内
+        let state = WindowState {
+            x: -100,
+            y: -200,
+            w: 800,
+            h: 600,
+            maximized: false,
+        };
+        let wa = (100, 50, 1280, 840);
+        let c = clamp_window_state(state, wa);
+        assert!(c.x >= 100 && c.y >= 50, "左上角应夹在工作区内: {c:?}");
+        assert!(c.x + c.w as i32 <= 100 + 1280, "不越出右边界: {c:?}");
+        assert!(c.y + c.h as i32 <= 50 + 840, "不越出下边界: {c:?}");
+    }
+
+    #[test]
+    fn clamp_preserves_maximized_flag() {
+        let state = WindowState {
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 100,
+            maximized: true,
+        };
+        let c = clamp_window_state(state, (0, 0, 1280, 840));
+        assert!(c.maximized);
     }
 
     /// 测试用最小 percent 解码（模拟 URLSearchParams.get 语义）

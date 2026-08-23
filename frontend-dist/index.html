@@ -457,21 +457,64 @@
       // 这里通过 Rust command 获取工作区，手动把窗口贴齐；还原时恢复之前的位置大小。
       let savedRect = null;
 
+      // ===== 窗口状态记忆（复用上次会话的几何/最大化态，避免每次重置居中） =====
+      let saveTimer = null;
+      function scheduleSave(state) {
+        // 变更停顿 800ms 后合批落盘（resize/move 高频事件防抖）
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () { persistWindowState(state); }, 800);
+      }
+      async function persistWindowState(state) {
+        try {
+          const s = state || {};
+          s.x = (await appWin.outerPosition()).x;
+          s.y = (await appWin.outerPosition()).y;
+          const size = await appWin.outerSize();
+          s.w = size.width;
+          s.h = size.height;
+          if (!IS_MAC) {
+            const wa = await getWorkArea();
+            s.maximized = wa && Math.abs(size.width - wa[2]) < 24 && Math.abs(size.height - wa[3]) < 24;
+          }
+          await window.__TAURI__.core.invoke("save_window_state", { state: s });
+        } catch (e) {}
+      }
+      // 工具：构造 PhysicalPosition/PhysicalSize（一次封装，避免散落）
+      function physPos(v) { return new window.__TAURI__.window.PhysicalPosition(v.x, v.y); }
+      function physSize(v) { return new window.__TAURI__.window.PhysicalSize(v.w, v.h); }
+
       // 显示窗口：窗口以 visible(false) 创建，等待内容就绪后再显示，
       // 避免 GUI（浅色主题）加载完成前露出暗色背景（启动闪色）。
-      // 显示完成后立即居中（事件驱动：不再固定等待 120ms；隐藏窗口上
-      // setPosition 无效，show 完成后窗口已可见）。
+      // 显示完成后立即恢复记忆几何或居中（事件驱动：不再固定等待 120ms；
+      // 隐藏窗口上 setPosition 无效，show 完成后窗口已可见）。
       let centered = false;
       function showWindow() {
         // GUI（iframe）就绪后再同步一次主题：脚本加载时 DSH 服务可能尚未
         // 写入 settings.yaml（读到默认 light），此刻重读可覆盖首启浅色问题。
         syncTheme();
         try {
-          appWin.show().then(function () {
+          appWin.show().then(async function () {
             if (!centered) {
               centered = true;
-              setTimeout(async function () {
-                try {
+              try {
+                const mem = await window.__TAURI__.core.invoke("load_window_state");
+                if (mem && mem.w > 0 && mem.h > 0) {
+                  // 记忆有效：恢复几何（Rust 侧已 clamp 到工作区）
+                  await appWin.setPosition(physPos(mem));
+                  await fitSize(mem.w, mem.h);
+                  if (mem.maximized) {
+                    const wa = await getWorkArea();
+                    if (wa) {
+                      savedRect = { x: mem.x, y: mem.y, w: mem.w, h: mem.h };
+                      await appWin.setPosition(
+                        new window.__TAURI__.window.PhysicalPosition(wa[0], wa[1])
+                      );
+                      await fitSize(wa[2], wa[3]);
+                      syncMax();
+                    }
+                  }
+                } else {
+                  // 无记忆：首启居中
                   const wa = await getWorkArea();
                   const size = await appWin.outerSize();
                   const x = wa[0] + Math.round((wa[2] - size.width) / 2);
@@ -479,14 +522,21 @@
                   await appWin.setPosition(
                     new window.__TAURI__.window.PhysicalPosition(Math.max(0, x), Math.max(0, y))
                   );
-                } catch (e) {}
-              }, 0);
+                }
+              } catch (e) {}
             }
           });
         } catch (e) {}
       }
       // 兜底：无论加载是否完成，5 秒后必须显示窗口（防止意外永久隐藏）
       setTimeout(showWindow, 5000);
+
+      // 窗口移动/缩放 → 防抖保存（应用常驻托盘，无法依赖"退出时保存"；
+      // 变更即落盘，随时退出都有最新状态）
+      try {
+        appWin.onMoved(function () { scheduleSave(null); });
+        appWin.onResized(function () { scheduleSave(null); });
+      } catch (e) {}
 
       async function getWorkArea() {
         // 返回 [x, y, width, height]（物理像素，工作区 = 屏幕去掉任务栏）
@@ -543,6 +593,9 @@
             await fitSize(wa[2], wa[3]);
           }
           syncMax();
+          // 最大化/还原切换是离散事件：立即保存（onMoved/onResized 的防抖
+          // 兜底会再合批一次，幂等无害）
+          persistWindowState(null);
         } catch (e) {}
       }
 
