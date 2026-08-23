@@ -384,9 +384,13 @@ pub fn probe_address(addr: String) -> bool {
 /// 工作区输入为 [x, y, width, height]（与 work_area 命令一致）。
 pub fn clamp_window_state(state: WindowState, wa: (i32, i32, u32, u32)) -> WindowState {
     let (wa_x, wa_y, wa_w, wa_h) = wa;
-    let w = state.w.min(wa_w.max(1));
-    let h = state.h.min(wa_h.max(1));
+    // 工作区 0x0 防御：先提升到 ≥1（既防尺寸除零，也保证下方位置计算 max ≥ min）
+    let wa_w = wa_w.max(1);
+    let wa_h = wa_h.max(1);
+    let w = state.w.min(wa_w);
+    let h = state.h.min(wa_h);
     // 位置：至少与工作区左/上沿对齐；窗口超出右/下沿时拉回
+    // （w ≤ wa_w 保证 wa_w - w ≥ 0，clamp 上下界合法）
     let x = state.x.clamp(wa_x, wa_x + wa_w as i32 - w as i32);
     let y = state.y.clamp(wa_y, wa_y + wa_h as i32 - h as i32);
     WindowState {
@@ -621,6 +625,15 @@ mod tests {
         assert!(c.x >= 100 && c.y >= 50, "左上角应夹在工作区内: {c:?}");
         assert!(c.x + c.w as i32 <= 100 + 1280, "不越出右边界: {c:?}");
         assert!(c.y + c.h as i32 <= 50 + 840, "不越出下边界: {c:?}");
+    }
+
+    #[test]
+    fn clamp_handles_zero_work_area_without_panicking() {
+        // 工作区异常（0x0）：不得 panic（Task 11 暴露的边界回归）
+        let state = WindowState { x: 100, y: 50, w: 800, h: 600, maximized: false };
+        let c = clamp_window_state(state, (0, 0, 0, 0));
+        assert_eq!((c.w, c.h), (1, 1), "0 工作区至少 1x1");
+        assert_eq!((c.x, c.y), (0, 0), "位置归位为 (0,0)");
     }
 
     #[test]

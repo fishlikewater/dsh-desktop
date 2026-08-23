@@ -571,6 +571,31 @@
       try {
         appWin.onMoved(function () { scheduleSave(null); });
         appWin.onResized(function () { scheduleSave(null); });
+        // Task 11：DPI/缩放变化（换显示器或系统缩放率调整）→ 延迟后
+        // 检查当前几何是否越出工作区，越界则经 clamp_rect 修正
+        // （还原路径已自带 clamp，此处兜底"非还原状态下"的越界窗口）
+        if (appWin.onScaleChanged) {
+          appWin.onScaleChanged(function () {
+            setTimeout(function () {
+              (async function () {
+                try {
+                  const pos = await appWin.outerPosition();
+                  const size = await appWin.outerSize();
+                  const cl = await invoke("clamp_rect", {
+                    x: pos.x, y: pos.y, w: size.width, h: size.height,
+                  });
+                  if (!cl) return;
+                  if (cl[0] !== pos.x || cl[1] !== pos.y) {
+                    await appWin.setPosition(
+                      new window.__TAURI__.window.PhysicalPosition(cl[0], cl[1])
+                    );
+                    await fitSize(cl[2], cl[3]);
+                  }
+                } catch (e) {}
+              })();
+            }, 300); // 等系统完成缩放重排再采样
+          });
+        }
       } catch (e) {}
 
       async function getWorkArea() {
@@ -599,17 +624,33 @@
           document.getElementById("titlebar").classList.toggle("maximized", nearFull);
         } catch (e) {}
       }
+      // 还原 savedRect（Task 11：先经 clamp_rect 夹取进当前工作区——
+      // 显示器切换/DPI 变化后旧坐标可能越界，还原绝不越出工作区）
+      async function restoreSavedRect() {
+        if (!savedRect) return;
+        try {
+          const clamped = await invoke("clamp_rect", {
+            x: savedRect.x, y: savedRect.y, w: savedRect.w, h: savedRect.h,
+          });
+          if (clamped) {
+            await appWin.setPosition(
+              new window.__TAURI__.window.PhysicalPosition(clamped[0], clamped[1])
+            );
+            await fitSize(clamped[2], clamped[3]);
+            return;
+          }
+        } catch (e) {}
+        // clamp 不可用（罕见）：退回原几何
+        await appWin.setPosition(physPos(savedRect));
+        await fitSize(savedRect.w, savedRect.h);
+      }
+
       async function toggleMaximize() {
         try {
           // 贴靠态优先还原（双击/按钮在贴靠中 = 回到贴靠前几何）
           if (snappedDir) {
             snappedDir = null;
-            if (savedRect) {
-              await appWin.setPosition(
-                new window.__TAURI__.window.PhysicalPosition(savedRect.x, savedRect.y)
-              );
-              await fitSize(savedRect.w, savedRect.h);
-            }
+            await restoreSavedRect();
             syncMax();
             persistWindowState(null);
             return;
@@ -622,12 +663,7 @@
             Math.abs(size.height - wa[3]) < 24;
           if (nearFull) {
             // 还原
-            if (savedRect) {
-              await appWin.setPosition(
-                new window.__TAURI__.window.PhysicalPosition(savedRect.x, savedRect.y)
-              );
-              await fitSize(savedRect.w, savedRect.h);
-            }
+            await restoreSavedRect();
           } else {
             savedRect = {
               x: (await appWin.outerPosition()).x,
@@ -684,10 +720,7 @@
           // 重复同向：还原（Windows 语义：再次 Win+方向键 / 拖回还原）
           if (snappedDir === dir) {
             snappedDir = null;
-            if (savedRect) {
-              await appWin.setPosition(physPos(savedRect));
-              await fitSize(savedRect.w, savedRect.h);
-            }
+            await restoreSavedRect();
             return;
           }
           // 首次贴靠（非最大化、非贴靠态）：保存当前手动几何
@@ -743,10 +776,7 @@
         else { // ArrowDown
           if (snappedDir) {
             snappedDir = null;
-            if (savedRect) {
-              appWin.setPosition(physPos(savedRect));
-              fitSize(savedRect.w, savedRect.h);
-            }
+            restoreSavedRect();
           } else {
             appWin.minimize();
           }
@@ -784,8 +814,7 @@
         // 贴靠态开始拖拽 → 立即还原（Windows 行为：拖动贴靠窗口先还原再跟随）
         if (snappedDir && savedRect) {
           snappedDir = null;
-          appWin.setPosition(physPos(savedRect));
-          fitSize(savedRect.w, savedRect.h);
+          restoreSavedRect();
         }
         const sx = e.screenX;
         const sy = e.screenY;

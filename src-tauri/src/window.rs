@@ -28,6 +28,46 @@ pub fn work_area(window: tauri::WebviewWindow) -> Option<(i32, i32, i32, i32)> {
     ))
 }
 
+/// 把窗口几何夹取进目标工作区（纯函数，tuple 接口便于 JS 调用与单测）。
+/// 语义委托 config::clamp_window_state（Task 5 同款不变量）：
+///
+/// - 尺寸：超出工作区 → 缩到工作区；
+/// - 位置：左上角至少与工作区左/上沿对齐，且不越出右/下边界。
+///
+/// 显示器切换/DPI 变化后，还原路径用它保证窗口始终落在当前显示器工作区内。
+pub fn clamp_to_work_area(
+    rect: (i32, i32, u32, u32),
+    wa: (i32, i32, i32, i32),
+) -> (i32, i32, u32, u32) {
+    let c = crate::config::clamp_window_state(
+        crate::config::WindowState {
+            x: rect.0,
+            y: rect.1,
+            w: rect.2,
+            h: rect.3,
+            maximized: false,
+        },
+        (wa.0, wa.1, wa.2.max(0) as u32, wa.3.max(0) as u32),
+    );
+    (c.x, c.y, c.w, c.h)
+}
+
+/// 前端还原路径调用：把目标几何夹取进当前显示器工作区。
+/// 显示器切换后 savedRect 的旧坐标可能越界，切换/还原时先经此钳制。
+#[tauri::command]
+pub fn clamp_rect(
+    window: tauri::WebviewWindow,
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+) -> (i32, i32, u32, u32) {
+    match work_area(window) {
+        Some(wa) => clamp_to_work_area((x, y, w, h), wa),
+        None => (x, y, w, h), // 拿不到工作区（罕见）：原样返回，不越界处理兜底
+    }
+}
+
 /// 计算初始/最小窗口尺寸（纯函数，无 FFI 依赖，便于单测）：
 /// 初始尺寸保持 1280x840（"原来的大小"），小桌面（如手机 RDP 远程，工作区
 /// 可能只有 640x480）时贴近屏幕，避免窗口比桌面还大、显示缩得很小；
@@ -358,7 +398,39 @@ mod style_guard {
 
 #[cfg(test)]
 mod tests {
-    use super::{initial_window_size, INITIAL_WINDOW_SIZE, MIN_WINDOW_SIZE};
+    use super::{clamp_to_work_area, initial_window_size, INITIAL_WINDOW_SIZE, MIN_WINDOW_SIZE};
+
+    #[test]
+    fn clamp_moves_oversized_rect_into_work_area() {
+        // 显示器切换后 savedRect 仍在旧显示器坐标（如旧 1920 屏 → 新 1280 屏）
+        let c = clamp_to_work_area((1400, 200, 1000, 800), (0, 0, 1280, 720));
+        assert_eq!(c, (280, 0, 1000, 720), "右/下越界应拉回工作区内");
+        let c = clamp_to_work_area((200, 900, 900, 600), (0, 0, 1280, 720));
+        assert_eq!(c, (200, 120, 900, 600), "下越界应上移");
+    }
+
+    #[test]
+    fn clamp_moves_negative_coordinates_into_work_area() {
+        // 负坐标（如从第二显示器切回主显示器后 x 为负）
+        let c = clamp_to_work_area((-400, -200, 800, 600), (0, 0, 1920, 1040));
+        assert_eq!(c, (0, 0, 800, 600), "负坐标应归位到工作区原点");
+    }
+
+    #[test]
+    fn clamp_keeps_rect_inside_work_area_unchanged() {
+        let c = clamp_to_work_area((100, 50, 800, 600), (0, 0, 1920, 1040));
+        assert_eq!(c, (100, 50, 800, 600), "工作区内原样保留");
+    }
+
+    #[test]
+    fn clamp_handles_zero_work_area_fallback() {
+        // 工作区异常（0x0）：至少 1x1 存在，且位置归零
+        let c = clamp_to_work_area((100, 50, 800, 600), (0, 0, 0, 0));
+        assert_eq!(c.2, 1);
+        assert_eq!(c.3, 1);
+        assert_eq!(c.0, 0);
+        assert_eq!(c.1, 0);
+    }
 
     #[test]
     fn large_desktop_keeps_design_size() {

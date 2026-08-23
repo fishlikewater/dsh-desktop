@@ -60,6 +60,7 @@ pub fn run() {
             config::get_address_history,
             config::set_address_history,
             config::probe_address,
+            window::clamp_rect,
             service::auto_start_service
         ])
         .plugin(tauri_plugin_dialog::init())
