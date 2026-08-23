@@ -164,6 +164,75 @@ pub fn service_start() -> Result<u32, String> {
     start_service()
 }
 
+/// 探测 DSH CLI 版本（About 弹层展示；只跑 `--version`，不启动服务）。
+/// 未找到 CLI / 执行失败 / 超时 → "未知"可读文案（不 panic）。
+#[tauri::command]
+pub fn dsh_version() -> String {
+    // 平台分派探测（linux 无探测实现 → 未知，不虚构）
+    #[cfg(target_os = "windows")]
+    let dsh = find_dsh();
+    #[cfg(target_os = "macos")]
+    let dsh = find_dsh_macos();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let dsh: Option<std::path::PathBuf> = None;
+    let Some(dsh) = dsh else {
+        return "未安装（npm install -g dsh）".into();
+    };
+    // Windows：dsh 是 .cmd/.ps1 shim（经 cmd/powershell 执行）；
+    // macOS/Linux：dsh 是带 shebang 的 node 脚本，直接 exec。
+    // Windows：dsh 是 .cmd/.ps1 shim（经 cmd/powershell 执行）；
+    // macOS/Linux：dsh 是带 shebang 的 node 脚本，直接 exec。
+    #[cfg(target_os = "windows")]
+    let (cmd, mut args) = dsh_command_parts(&dsh);
+    #[cfg(not(target_os = "windows"))]
+    let (cmd, args) = (dsh.clone(), Vec::<String>::new());
+    let mut child = match std::process::Command::new(&cmd)
+        .args(&args)
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!(target: "service", "探测 dsh 版本失败（spawn）: {e}");
+            return "未知".into();
+        }
+    };
+    // 短超时：等待退出 + 读 stdout
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+    loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            if !status.success() {
+                return "未知".into();
+            }
+            break;
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            return "未知".into();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let mut out = String::new();
+    use std::io::Read;
+    if child
+        .stdout
+        .take()
+        .map(|mut o| o.read_to_string(&mut out))
+        .unwrap_or(Ok(0))
+        .is_err()
+    {
+        return "未知".into();
+    }
+    let first = out.lines().next().unwrap_or("").trim().to_string();
+    if first.is_empty() {
+        "未知".into()
+    } else {
+        first
+    }
+}
+
 /// 启动 DSH 服务（托盘与 command 共用核心逻辑）。
 #[cfg(target_os = "windows")]
 pub fn start_service() -> Result<u32, String> {

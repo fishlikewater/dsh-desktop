@@ -92,6 +92,14 @@ node scripts/bench/baseline.mjs [exe路径] [采样秒数] [间隔ms]
 
 图标资源为 32x32 白描边圆点（深浅系统主题均可见），路径 `src-tauri/icons/tray-{on,off}.png`（编译期内嵌 `include_bytes!`）。
 
+## dsh:// 深链接评估结论（Task 19）
+
+**不实施 dsh:// 协议注册。** 依据：
+
+1. 项目无 `tauri-plugin-deep-link` 依赖、无平台协议注册配置（`Cargo.toml`/`tauri.conf.json` 均无）——实现需引入插件或手工平台注册（macOS `Info.plist` CFBundleURLTypes / Windows 注册表 + 图标），成本大于收益；
+2. DSH GUI（DeepSeek Harness Web GUI，外部项目）无 `dsh://` 路由处理——协议唤起无法路由到 GUI 具体页面，仅剩"唤起主窗口"价值（全局快捷键已覆盖）；
+3. 不为不可用的路由虚构协议支持。
+
 ## dsh sidecar 可行性结论（Task 15）
 
 **结论：放弃 sidecar 捆绑（方案 A），改纯安装引导。** 依据：

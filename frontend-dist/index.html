@@ -239,6 +239,18 @@
         justify-content: center;
       }
       #log-modal.show { display: flex; }
+      /* About 弹层（Task 19）：复用 settings 弹层骨架 */
+      #about-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 66;
+        background: rgba(0, 0, 0, 0.30);
+        align-items: center;
+        justify-content: center;
+      }
+      #about-modal.show { display: flex; }
+      #about-modal .settings-card { width: 400px; }
       .log-card { width: 640px; max-width: calc(100% - 48px); padding: 24px; }
       .log-card .settings-head { margin-bottom: 12px; }
       .log-actions { display: flex; gap: 8px; align-items: center; }
@@ -492,6 +504,7 @@
           <div class="settings-row">
             <span class="label">应用版本</span>
             <code id="settings-version"></code>
+            <button id="settings-about" class="mini">关于</button>
             <span class="hint">当前安装的桌面壳版本</span>
           </div>
           <div class="settings-row">
@@ -538,6 +551,30 @@
             </div>
           </div>
           <pre id="log-content" class="log-content"></pre>
+        </div>
+      </div>
+      <!-- About 弹层（Task 19：壳版本 + DSH CLI 版本 + 服务地址） -->
+      <div id="about-modal">
+        <div class="card settings-card">
+          <div class="settings-head">
+            <h1>关于</h1>
+            <button id="about-close" title="关闭" aria-label="关闭">×</button>
+          </div>
+          <div class="settings-row">
+            <span class="label">DSH Desktop</span>
+            <code id="about-shell-version"></code>
+            <span class="hint">桌面壳</span>
+          </div>
+          <div class="settings-row">
+            <span class="label">DSH CLI</span>
+            <code id="about-dsh-version"></code>
+            <span class="hint" id="about-dsh-hint">DeepSeek Harness 命令行</span>
+          </div>
+          <div class="settings-row">
+            <span class="label">服务地址</span>
+            <code id="about-url"></code>
+            <span class="hint">当前连接目标</span>
+          </div>
         </div>
       </div>
     </div>
@@ -1357,6 +1394,35 @@
         invoke("open_log_dir").catch(function (e) {
           settingsUpdateResult.textContent = String(e);
         });
+      });
+
+      // ===== About 弹层（Task 19）=====
+      const aboutModal = document.getElementById("about-modal");
+      const aboutShellVersion = document.getElementById("about-shell-version");
+      const aboutDshVersion = document.getElementById("about-dsh-version");
+      const aboutUrl = document.getElementById("about-url");
+      function openAbout() {
+        aboutShellVersion.textContent = "…";
+        aboutDshVersion.textContent = "…";
+        aboutUrl.textContent = DSH_URL;
+        invoke("app_version").then(function (v) {
+          aboutShellVersion.textContent = "v" + v;
+        }).catch(function () {
+          aboutShellVersion.textContent = "";
+        });
+        invoke("dsh_version").then(function (v) {
+          aboutDshVersion.textContent = v;
+        }).catch(function () {
+          aboutDshVersion.textContent = "未知";
+        });
+        aboutModal.classList.add("show");
+      }
+      document.getElementById("settings-about").addEventListener("click", openAbout);
+      document.getElementById("about-close").addEventListener("click", function () {
+        aboutModal.classList.remove("show");
+      });
+      aboutModal.addEventListener("click", function (e) {
+        if (e.target === aboutModal) aboutModal.classList.remove("show");
       });
 
       // ===== 应用内日志查看器（Task 16）=====

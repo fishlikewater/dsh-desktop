@@ -23,6 +23,7 @@ pub fn run() {
             theme::theme_preference,
             service::service_start,
             service::service_stop,
+            service::dsh_version,
             settings::app_version,
             settings::autostart_state,
             settings::autostart_toggle,
