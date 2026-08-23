@@ -257,6 +257,44 @@
         margin: 0;
       }
       .log-empty { color: var(--muted); }
+      /* ===== 覆盖层增强（Task 17）===== */
+      #overlay .mini { margin-top: 10px; }
+      .install-guide {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+        text-align: left;
+        line-height: 1.6;
+      }
+      .install-guide summary { cursor: pointer; user-select: none; }
+      .install-guide code {
+        font-family: ui-monospace, Consolas, monospace;
+        background: var(--code-bg);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      .loading-bar {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: rgba(63, 185, 80, 0.35);
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .loading-bar.hidden { display: none; }
+      #loading-text {
+        position: absolute;
+        top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+        background: var(--titlebar-bg);
+        padding: 2px 8px;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        white-space: nowrap;
+      }
       .settings-card {
         width: 420px;
         max-width: calc(100% - 48px);
@@ -405,6 +443,8 @@
 
     <!-- 内容区：iframe 嵌入 DSH GUI -->
     <div id="frame-wrap">
+      <!-- Task 17：页面加载进度条（15s 黑洞期提示，非覆盖层遮挡） -->
+      <div id="loading-bar" class="loading-bar hidden"><span id="loading-text">正在加载页面…</span></div>
       <iframe id="dsh-frame" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
       <!-- 自绘边缘 resize 热区（窗口无系统边框，边缘拖拽调整大小） -->
       <div class="resize-h resize-n" data-dir="n"></div>
@@ -424,6 +464,14 @@
           <div class="status"><span class="dot"></span><span id="status-text">正在检测服务…</span></div>
           <button id="retry">立即重试</button>
           <button id="service-start" class="primary">启动 DSH 服务</button>
+          <button id="overlay-settings" class="mini">打开设置</button>
+          <!-- Task 17：安装指引（按需展开，老用户零噪声） -->
+          <details class="install-guide" id="overlay-install-guide">
+            <summary>首次使用？安装 DSH 指引</summary>
+            <p>① 安装 Node.js ≥ 18 后执行 <code>npm install -g dsh</code>；</p>
+            <p>② 或设置环境变量 <code>DSH_CLI</code> 指向 dsh 可执行文件后重启本应用；</p>
+            <p>③ 安装完成后点击「立即重试」。</p>
+          </details>
           <div class="err" id="err"></div>
         </div>
       </div>
@@ -978,9 +1026,33 @@
         statusDot.title = `DSH 服务：${mode === "online" ? "在线" : mode === "loading" ? "加载中" : "离线"} · ${DSH_URL} · ${t}`;
       }
 
+      // ===== 覆盖层增强（Task 17）=====
+      // 页面加载进度条：iframe 加载黑洞期（15s 超时窗口）提示加载状态，
+      // 顶部细条不遮挡页面（不改 iframe 加载策略与轮询节奏）
+      const loadingBar = document.getElementById("loading-bar");
+      const loadingText = document.getElementById("loading-text");
+      let loadElapsed = 0;
+      let loadBarTimer = null;
+      function showLoadingBar() {
+        loadElapsed = 0;
+        loadingText.textContent = "正在加载页面…";
+        loadingBar.classList.remove("hidden");
+        if (loadBarTimer) { clearInterval(loadBarTimer); }
+        loadBarTimer = setInterval(function () {
+          loadElapsed += 1;
+          loadingText.textContent = "正在加载页面… " + loadElapsed + " 秒";
+        }, 1000);
+      }
+      function hideLoadingBar() {
+        if (loadBarTimer) { clearInterval(loadBarTimer); loadBarTimer = null; }
+        loadingBar.classList.add("hidden");
+      }
+      document.getElementById("overlay-settings").addEventListener("click", openSettings);
+
       // GUI 加载完成（iframe load）后显示窗口，避免启动闪色
       frame.addEventListener("load", function () {
         loadedOk = true;
+        hideLoadingBar();
         if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
         setStatus("online"); // 页面加载完成：即时转绿（不等下一轮 tick）
         showWindow();
@@ -1002,10 +1074,12 @@
             frameLoaded = true;
             loadedOk = false;
             setStatus("loading"); // 可达但页面加载中（黄）
+            showLoadingBar(); // 15s 黑洞期进度提示
             frame.src = DSH_URL;
             // 页面加载黑洞（如服务挂起不响应）→ 15s 后提示重试
             loadTimer = setTimeout(function () {
               if (!loadedOk) {
+                hideLoadingBar();
                 statusText.textContent = "页面加载超时";
                 errEl.textContent = "服务可达但页面 15s 未加载，请点击重试";
                 showWindow();
@@ -1044,6 +1118,7 @@
         if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
         frame.src = "about:blank";
         setStatus("loading");
+        showLoadingBar();
         tick();
       });
 
@@ -1114,6 +1189,7 @@
           frame.src = "about:blank";
           overlay.classList.remove("show");
           setStatus("loading");
+          showLoadingBar();
           tick();
           // 保存历史（去重/上限在 Rust 侧）
           const hist = await invoke("get_address_history");
