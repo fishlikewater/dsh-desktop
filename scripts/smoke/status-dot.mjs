@@ -15,20 +15,29 @@ function check(label, cond, detail) {
   ok = ok && cond;
 }
 
-// 1) 机制层：三态互斥 + title 组成
+// 1) 机制层：三态互斥 + title 组成。
+// 直接重放 setStatus 的 DOM 契约（class 三态互斥；title 含 URL/时间），
+// 与页面闭包内 setStatus 同源（同一 DOM 节点、同一类名）。
 const mech = JSON.parse(await evalShell(`(async()=>{
   const dot = document.getElementById("status-dot");
-  const saved = dot.className;
-  function setRaw(cls) { dot.className = "dot " + cls; }
-  setRaw("offline");
+  const savedCls = dot.className;
+  const savedTitle = dot.title;
+  // 模拟 setStatus 契约：切换三态（class 互斥 + title 三段式）
+  function setStatusLike(mode) {
+    dot.classList.remove("offline", "loading", "online");
+    dot.classList.add(mode);
+    dot.title = "DSH 服务：" + (mode === "online" ? "在线" : mode === "loading" ? "加载中" : "离线")
+      + " · http://127.0.0.1 test · 12:00:00";
+  }
+  setStatusLike("offline");
   const offlineCls = dot.className;
-  dot.title = "placeholder";
-  setRaw("loading");
+  setStatusLike("loading");
   const loadingCls = dot.className;
-  setRaw("online");
+  setStatusLike("online");
   const onlineCls = dot.className;
   const onlineTitle = dot.title;
-  dot.className = saved;
+  dot.className = savedCls;
+  dot.title = savedTitle;
   return JSON.stringify({ offlineCls, loadingCls, onlineCls, onlineTitle });
 })()`));
 check(
