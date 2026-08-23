@@ -8,7 +8,7 @@ mod theme;
 mod tray;
 mod window;
 
-use tauri::{Url, WebviewUrl, WindowEvent};
+use tauri::{Manager, Url, WebviewUrl, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use config::{dsh_url, encode_query_param};
@@ -52,7 +52,9 @@ pub fn run() {
             settings::update_install,
             settings::open_log_dir,
             config::load_window_state,
-            config::save_window_state
+            config::save_window_state,
+            config::get_close_behavior,
+            config::set_close_behavior
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -87,10 +89,26 @@ pub fn run() {
             theme::watch_settings_theme(app.handle());
             Ok(())
         })
-        // 关闭窗口时最小化到托盘，应用常驻后台
+        // 关闭窗口时最小化到托盘，应用常驻后台；
+        // 「关闭时退出」开关（config.close_behavior）开启后改为真正退出。
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                // 读最新落盘值（开关切换即时生效，不依赖进程内缓存）
+                if config::current_close_behavior() {
+                    log::info!(target: "window", "close requested -> exit（关闭时退出已开启）");
+                    return; // 不 prevent_close：默认放行 → 窗口关闭 → 应用退出
+                }
                 log::info!(target: "window", "close requested -> hide to tray");
+                // 首次关闭：系统通知引导（"仍在运行，点击托盘图标恢复"），仅一次
+                if !config::first_close_notified() {
+                    let _ = config::mark_first_close_notified();
+                    log::info!(target: "window", "首次关闭：发送托盘引导通知");
+                    tray::notify(
+                        window.app_handle().clone(),
+                        "DSH Desktop 仍在运行".into(),
+                        "点击系统托盘图标即可恢复窗口（可在配置中开启「关闭时退出」）".into(),
+                    );
+                }
                 let _ = window.hide();
                 api.prevent_close();
             }

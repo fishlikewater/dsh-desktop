@@ -54,6 +54,12 @@ pub struct ShellConfig {
     /// 上次会话的窗口几何（无记忆为 None → 启动走默认居中）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_state: Option<WindowState>,
+    /// 关闭行为：true = 点击关闭直接退出；false（默认）= 隐藏到托盘常驻
+    #[serde(default)]
+    pub close_behavior: bool,
+    /// 首次关闭引导通知已发过（仅一次，跨会话持久）
+    #[serde(default)]
+    pub first_close_notified: bool,
 }
 
 impl ShellConfig {
@@ -224,6 +230,52 @@ pub fn save_window_state(state: WindowState) -> Result<(), String> {
     cfg.window_state = Some(state);
     cfg.save_to(&path)
         .map_err(|e| format!("保存窗口状态失败（{}）: {e}", path.display()))
+}
+
+// ===== 关闭行为（Task 8：首次关闭引导 + 「关闭时退出」开关）=====
+
+/// 读取「关闭时退出」开关（默认 false = 隐藏到托盘）。
+#[tauri::command]
+pub fn get_close_behavior() -> bool {
+    shell_config().close_behavior
+}
+
+/// 读取当前落盘的关闭行为（不依赖进程内 OnceLock 缓存）：
+/// 开关切换后立即生效（on_window_event 在每次关闭事件时读最新值）。
+pub fn current_close_behavior() -> bool {
+    ShellConfig::load_from(&shell_config_path()).close_behavior
+}
+
+/// 设置「关闭时退出」开关：更新内存缓存并落盘（即时生效，下次关闭即应用）。
+#[tauri::command]
+pub fn set_close_behavior(enabled: bool) -> Result<(), String> {
+    update_config(|cfg| {
+        cfg.close_behavior = enabled;
+    })
+}
+
+/// 首次关闭引导通知是否已发过（跨会话持久标记，读最新落盘值）。
+pub fn first_close_notified() -> bool {
+    ShellConfig::load_from(&shell_config_path()).first_close_notified
+}
+
+/// 标记首次关闭引导通知已发（写盘持久化；重复调用无副作用）。
+pub fn mark_first_close_notified() -> Result<(), String> {
+    update_config(|cfg| {
+        cfg.first_close_notified = true;
+    })
+}
+
+/// 通用配置更新：克隆内存缓存 → 修改 → 原子写盘。
+/// 注意：shell_config() 是 OnceLock 只读缓存，此函数只落盘不更新缓存
+/// （close_behavior 每次都读盘的最新值由 on_window_event 直接 load 保证，
+/// 避免引入可变全局）。
+fn update_config(mutate: impl FnOnce(&mut ShellConfig)) -> Result<(), String> {
+    let path = shell_config_path();
+    let mut cfg = shell_config().clone();
+    mutate(&mut cfg);
+    cfg.save_to(&path)
+        .map_err(|e| format!("保存配置失败（{}）: {e}", path.display()))
 }
 
 /// 把记忆几何夹取进当前工作区（纯函数，便于单测）：
@@ -406,6 +458,7 @@ mod tests {
                 h: 650,
                 maximized: false,
             }),
+            ..Default::default()
         };
         cfg.save_to(&path).expect("save_to 应成功");
         let back = ShellConfig::load_from(&path);
@@ -483,6 +536,67 @@ mod tests {
         };
         let c = clamp_window_state(state, (0, 0, 1280, 840));
         assert!(c.maximized);
+    }
+
+    // ===== 关闭行为（Task 8）=====
+
+    #[test]
+    fn close_behavior_defaults_to_hide_to_tray() {
+        // 默认 false = 隐藏到托盘（既有行为不回归）
+        let cfg = ShellConfig::default();
+        assert!(!cfg.close_behavior);
+        let parsed = parse(r#"{"dsh_url": "http://x:1"}"#);
+        assert!(!parsed.close_behavior, "旧配置缺字段应默认 false");
+    }
+
+    #[test]
+    fn close_behavior_serde_round_trip() {
+        let cfg = ShellConfig {
+            close_behavior: true,
+            ..Default::default()
+        };
+        let text = serde_json::to_string(&cfg).unwrap();
+        let back: ShellConfig = serde_json::from_str(&text).unwrap();
+        assert!(back.close_behavior);
+    }
+
+    #[test]
+    fn close_behavior_save_then_load_consistent() {
+        let dir = std::env::temp_dir().join(format!("dsh-close-behavior-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        // 同文件多字段共存（窗口状态 + 关闭行为）
+        let cfg = ShellConfig {
+            window_state: Some(WindowState {
+                x: 1,
+                y: 2,
+                w: 800,
+                h: 600,
+                maximized: false,
+            }),
+            close_behavior: true,
+            ..Default::default()
+        };
+        cfg.save_to(&path).unwrap();
+        let back = ShellConfig::load_from(&path);
+        assert!(back.close_behavior);
+        assert_eq!(back.window_state, cfg.window_state);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn first_close_notified_round_trip() {
+        let dir = std::env::temp_dir().join(format!("dsh-first-close-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let cfg = ShellConfig {
+            first_close_notified: true,
+            ..Default::default()
+        };
+        cfg.save_to(&path).unwrap();
+        let back = ShellConfig::load_from(&path);
+        assert!(back.first_close_notified, "标记应持久化");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 测试用最小 percent 解码（模拟 URLSearchParams.get 语义）

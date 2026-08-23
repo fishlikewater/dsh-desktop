@@ -412,6 +412,11 @@
             <label class="switch"><input type="checkbox" id="settings-autostart"><span class="track"></span></label>
           </div>
           <div class="settings-row">
+            <span class="label">关闭时退出</span>
+            <span class="hint" id="settings-close-hint">关（默认）：关闭隐藏到托盘</span>
+            <label class="switch"><input type="checkbox" id="settings-close-exit"><span class="track"></span></label>
+          </div>
+          <div class="settings-row">
             <span class="label">自动更新</span>
             <span class="hint" id="settings-update-result"></span>
             <button id="settings-update-check" class="mini">检查更新</button>
@@ -948,6 +953,8 @@
       const settingsModal = document.getElementById("settings-modal");
       const settingsUrl = document.getElementById("settings-url");
       const settingsAuto = document.getElementById("settings-autostart");
+      const settingsCloseExit = document.getElementById("settings-close-exit");
+      const settingsCloseHint = document.getElementById("settings-close-hint");
       const settingsUpdateBtn = document.getElementById("settings-update-check");
       const settingsUpdateInstallBtn = document.getElementById("settings-update-install");
       const settingsUpdateResult = document.getElementById("settings-update-result");
@@ -955,6 +962,11 @@
       const settingsOpenLogs = document.getElementById("settings-open-logs");
       let pendingUpdate = null; // update_check 发现的新版本号（有值 = 启用「更新」按钮）
 
+      function updateCloseHint() {
+        settingsCloseHint.textContent = settingsCloseExit.checked
+          ? "开：点击关闭即退出应用"
+          : "关（默认）：关闭隐藏到托盘";
+      }
       function openSettings() {
         settingsUrl.textContent = DSH_URL;
         settingsUpdateResult.textContent = "";
@@ -970,6 +982,11 @@
         invoke("autostart_state").then(function (v) {
           settingsAuto.checked = !!v;
         }).catch(function () {});
+        // 读取「关闭时退出」开关
+        invoke("get_close_behavior").then(function (v) {
+          settingsCloseExit.checked = !!v;
+          updateCloseHint();
+        }).catch(function () {});
         settingsModal.classList.add("show");
       }
       function closeSettings() { settingsModal.classList.remove("show"); }
@@ -980,6 +997,16 @@
       });
       // 托盘"设置…"入口
       window.__TAURI__.event.listen("open-settings", function () { openSettings(); });
+
+      settingsCloseExit.addEventListener("change", function () {
+        const want = settingsCloseExit.checked;
+        invoke("set_close_behavior", { enabled: want }).then(function () {
+          updateCloseHint();
+        }).catch(function (e) {
+          settingsCloseExit.checked = !want;
+          settingsUpdateResult.textContent = String(e);
+        });
+      });
 
       settingsAuto.addEventListener("change", function () {
         invoke("autostart_toggle").then(function (v) {
