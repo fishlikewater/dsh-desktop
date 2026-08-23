@@ -278,6 +278,14 @@
       /* 服务地址行：说明独立成行，避免与 URL 同排挤压 */
       .settings-row.row-url { flex-wrap: wrap; }
       .settings-row.row-url .hint { flex-basis: 100%; padding-left: 84px; text-align: left; }
+      .settings-row.row-url select,
+      .settings-row.row-url input[type="text"] {
+        font-size: 12px; padding: 4px 8px; border: 1px solid var(--border);
+        border-radius: 5px; background: var(--code-bg); color: var(--fg);
+        flex: 1; min-width: 120px; font-family: ui-monospace, monospace;
+      }
+      .settings-row.row-url select { flex: 0 0 auto; max-width: 220px; }
+      .settings-row.row-url input[type="text"] { margin: 0 6px; }
       .settings-row .mini {
         margin-top: 0; /* 覆盖 .card button 的 margin-top:22px，行内垂直居中 */
         padding: 6px 14px;
@@ -399,8 +407,10 @@
           </div>
           <div class="settings-row row-url">
             <span class="label">服务地址</span>
-            <code id="settings-url"></code>
-            <span class="hint">启动时读取（环境变量/配置文件），修改后需重启应用</span>
+            <select id="settings-addr-select" title="历史地址"></select>
+            <input id="settings-addr-input" type="text" spellcheck="false" placeholder="http://127.0.0.1:3080" />
+            <button id="settings-addr-switch" class="mini">切换</button>
+            <span class="hint" id="settings-addr-hint">仅本机地址可加载（127.0.0.1/localhost）</span>
           </div>
           <div class="settings-row">
             <span class="label">应用版本</span>
@@ -442,7 +452,8 @@
 
       // ===== 配置 =====
       const params = new URLSearchParams(location.search);
-      const DSH_URL = params.get("dsh") || "http://127.0.0.1:3080";
+      // 服务地址（Task 10：设置页切换后更新此变量 → tick/frame 单一事实源）
+      let DSH_URL = params.get("dsh") || "http://127.0.0.1:3080";
       // DOM 构建而非 innerHTML 拼接：URL 是外部输入，避免注入面
       document.getElementById("target-line").replaceChildren(
         document.createTextNode("请先运行 "),
@@ -964,7 +975,10 @@
 
       // ===== 设置弹层（T5.4）=====
       const settingsModal = document.getElementById("settings-modal");
-      const settingsUrl = document.getElementById("settings-url");
+      const settingsUrl = document.getElementById("settings-addr-select");
+      const settingsAddrInput = document.getElementById("settings-addr-input");
+      const settingsAddrSwitch = document.getElementById("settings-addr-switch");
+      const settingsAddrHint = document.getElementById("settings-addr-hint");
       const settingsAuto = document.getElementById("settings-autostart");
       const settingsCloseExit = document.getElementById("settings-close-exit");
       const settingsCloseHint = document.getElementById("settings-close-hint");
@@ -982,11 +996,85 @@
           ? "开：点击关闭即退出应用"
           : "关（默认）：关闭隐藏到托盘";
       }
+      // ===== 服务地址选择（Task 10）=====
+      // 填充历史下拉（当前地址 + 历史列表），输入框展示当前值
+      function fillAddressOptions(history) {
+        settingsUrl.replaceChildren();
+        const current = DSH_URL;
+        const opts = [current].concat(history.filter(function (a) { return a !== current; }));
+        opts.forEach(function (addr) {
+          const opt = document.createElement("option");
+          opt.value = addr;
+          opt.textContent = addr;
+          settingsUrl.appendChild(opt);
+        });
+        settingsAddrInput.value = current;
+      }
+      // 切换地址：本机校验 + 可达性探测 → 更新 DSH_URL → 重载 iframe → 保存历史 → 重跑 tick
+      async function switchAddress(addrRaw) {
+        const addr = (addrRaw || "").trim();
+        if (!addr) { settingsAddrHint.textContent = "请输入服务地址"; return; }
+        // 本机地址校验（CSP frame-src 静态限制：非本机无法加载）
+        const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost):\d+/.test(addr);
+        if (!isLocal) {
+          settingsAddrHint.textContent = "仅本机地址可加载（127.0.0.1/localhost）；非本机地址受 CSP 限制";
+          return;
+        }
+        if (addr === DSH_URL) {
+          settingsAddrHint.textContent = "已是当前地址";
+          return;
+        }
+        settingsAddrSwitch.disabled = true;
+        settingsAddrHint.textContent = "正在探测…";
+        try {
+          const reachable = await invoke("probe_address", { addr: addr });
+          if (!reachable) {
+            settingsAddrHint.textContent = "该地址当前不可达（服务未启动？）";
+            return;
+          }
+          // 切换：更新单一事实源 + 重载 iframe + 立即检测
+          DSH_URL = addr;
+          frameLoaded = false;
+          loadedOk = false;
+          if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
+          frame.src = "about:blank";
+          overlay.classList.remove("show");
+          setStatus("loading");
+          tick();
+          // 保存历史（去重/上限在 Rust 侧）
+          const hist = await invoke("get_address_history");
+          invoke("set_address_history", { list: hist.concat([addr]) }).catch(function () {});
+          settingsAddrHint.textContent = "已切换，正在加载…";
+          // 同步标题栏工具提示（含 URL）
+          setStatus("loading");
+        } catch (e) {
+          settingsAddrHint.textContent = String(e);
+        } finally {
+          settingsAddrSwitch.disabled = false;
+        }
+      }
+      // 下拉选中 → 填入输入框（不自动切换，防止误点）
+      settingsUrl.addEventListener("change", function () {
+        settingsAddrInput.value = settingsUrl.value;
+      });
+      settingsAddrSwitch.addEventListener("click", function () {
+        switchAddress(settingsAddrInput.value);
+      });
+      settingsAddrInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") switchAddress(settingsAddrInput.value);
+      });
+
       function openSettings() {
-        settingsUrl.textContent = DSH_URL;
+        settingsAddrHint.textContent = "仅本机地址可加载（127.0.0.1/localhost）";
         settingsUpdateResult.textContent = "";
         settingsUpdateInstallBtn.disabled = true;
         pendingUpdate = null;
+        // 填充地址历史（最新在前）
+        invoke("get_address_history").then(function (h) {
+          fillAddressOptions(h || []);
+        }).catch(function () {
+          fillAddressOptions([]);
+        });
         // 读取当前应用版本
         invoke("app_version").then(function (v) {
           settingsVersion.textContent = "v" + v;

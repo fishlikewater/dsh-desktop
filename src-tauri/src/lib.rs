@@ -57,6 +57,9 @@ pub fn run() {
             config::set_close_behavior,
             config::get_auto_restart,
             config::set_auto_restart,
+            config::get_address_history,
+            config::set_address_history,
+            config::probe_address,
             service::auto_start_service
         ])
         .plugin(tauri_plugin_dialog::init())

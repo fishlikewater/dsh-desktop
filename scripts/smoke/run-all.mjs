@@ -44,6 +44,7 @@ const scenarios = [
   ["theme-sync.mjs", "主题即时同步"],
   ["isolation.mjs", "隔离边界"],
   ["status-dot.mjs", "状态圆点"],
+  ["address-switch.mjs", "地址切换"],
   ["snap.mjs", "贴靠状态机"],
   ["window-ctrl.mjs", "窗口控制权限"],
 ];

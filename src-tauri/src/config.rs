@@ -64,6 +64,10 @@ pub struct ShellConfig {
     /// service::auto_start_service，节流在 service.rs 侧）
     #[serde(default)]
     pub auto_restart_enabled: bool,
+    /// 服务地址历史（Task 10：最新在前，上限 ADDRESS_HISTORY_MAX；
+    /// 仅本机地址——CSP frame-src 静态限制）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address_history: Option<Vec<String>>,
 }
 
 impl ShellConfig {
@@ -295,6 +299,81 @@ fn update_config(mutate: impl FnOnce(&mut ShellConfig)) -> Result<(), String> {
     mutate(&mut cfg);
     cfg.save_to(&path)
         .map_err(|e| format!("保存配置失败（{}）: {e}", path.display()))
+}
+
+// ===== 服务地址历史（Task 10：设置页可编辑 + 快速切换）=====
+
+/// 服务地址历史上限（默认 3080 常驻首位不算历史；最多记 5 条）
+pub const ADDRESS_HISTORY_MAX: usize = 5;
+
+/// 校验地址是"本机可加载"（CSP frame-src 仅 127.0.0.1:/localhost:；
+/// 非本机地址会被静态 CSP 拦截，不纳入历史以免产生虚假可用项）。
+pub fn is_local_host_address(addr: &str) -> bool {
+    let a = addr.trim().trim_end_matches('/');
+    a.starts_with("http://127.0.0.1:")
+        || a.starts_with("http://localhost:")
+        || a.starts_with("https://127.0.0.1:")
+        || a.starts_with("https://localhost:")
+}
+
+/// 把地址加入历史（去重 + 最新在前 + 上限截断；非本机地址拒绝）。
+/// 纯函数便于单测：返回新列表，不落盘（调用方 update_config）。
+pub fn push_address_history(list: &[String], addr: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if is_local_host_address(addr) {
+        out.push(addr.trim_end_matches('/').to_string());
+    }
+    for prev in list {
+        // 去重（含归一化比较：忽略尾斜杠差异）
+        let norm = prev.trim_end_matches('/');
+        if norm == addr.trim_end_matches('/') {
+            continue;
+        }
+        out.push(norm.to_string());
+    }
+    out.truncate(ADDRESS_HISTORY_MAX);
+    out
+}
+
+/// 读取服务地址历史（最新在前）。
+#[tauri::command]
+pub fn get_address_history() -> Vec<String> {
+    ShellConfig::load_from(&shell_config_path())
+        .address_history
+        .unwrap_or_default()
+}
+
+/// 整份保存地址历史（前端切换成功后调用；去重/上限由 push_address_history 保证）。
+#[tauri::command]
+pub fn set_address_history(list: Vec<String>) -> Result<(), String> {
+    let mut trimmed = Vec::new();
+    for addr in list {
+        trimmed = push_address_history(&trimmed, &addr);
+    }
+    update_config(|cfg| {
+        cfg.address_history = Some(trimmed);
+    })
+}
+
+/// 端口可达性探测（TCP connect_timeout，复用 service_reachable 模式）。
+/// 纯函数（地址可注入，超时可注入），便于单测。
+pub fn probe_address_reachable(addr: &str, timeout: std::time::Duration) -> bool {
+    let Ok(url) = tauri::Url::parse(addr.trim()) else {
+        return false;
+    };
+    let Ok(addrs) = url.socket_addrs(|| None) else {
+        return false;
+    };
+    let Some(addr) = addrs.first() else {
+        return false;
+    };
+    std::net::TcpStream::connect_timeout(addr, timeout).is_ok()
+}
+
+/// 探测地址是否可达（command 版，默认 1.5s 超时；供前端切换前验证）。
+#[tauri::command]
+pub fn probe_address(addr: String) -> bool {
+    probe_address_reachable(&addr, std::time::Duration::from_millis(1500))
 }
 
 /// 把记忆几何夹取进当前工作区（纯函数，便于单测）：
@@ -616,6 +695,103 @@ mod tests {
         let back = ShellConfig::load_from(&path);
         assert!(back.first_close_notified, "标记应持久化");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ===== 服务地址历史（Task 10）=====
+
+    #[test]
+    fn push_history_prepends_newest_first() {
+        let list: Vec<String> = Vec::new();
+        let h1 = push_address_history(&list, "http://127.0.0.1:3080");
+        assert_eq!(h1, vec!["http://127.0.0.1:3080"]);
+        let h2 = push_address_history(&h1, "http://127.0.0.1:3999");
+        assert_eq!(
+            h2,
+            vec!["http://127.0.0.1:3999", "http://127.0.0.1:3080"],
+            "最新应在最前"
+        );
+    }
+
+    #[test]
+    fn push_history_dedupes_by_normalized_url() {
+        // 尾斜杠差异视为同一地址（归一化去重）
+        let list = vec!["http://127.0.0.1:3080".to_string()];
+        let h = push_address_history(&list, "http://127.0.0.1:3080/");
+        assert_eq!(h, vec!["http://127.0.0.1:3080"], "重复地址应去重");
+        let h = push_address_history(&h, "http://localhost:3080/");
+        assert_eq!(
+            h,
+            vec!["http://localhost:3080", "http://127.0.0.1:3080"],
+            "localhost 与 127.0.0.1 是不同条目（都可达，保留）"
+        );
+    }
+
+    #[test]
+    fn push_history_truncates_at_max() {
+        let mut list: Vec<String> = Vec::new();
+        for i in 0..(ADDRESS_HISTORY_MAX + 3) {
+            list = push_address_history(&list, &format!("http://127.0.0.1:{:04}", 3000 + i));
+        }
+        assert_eq!(list.len(), ADDRESS_HISTORY_MAX, "应截断到上限");
+        assert_eq!(list[0], "http://127.0.0.1:3007", "最新在首位");
+    }
+
+    #[test]
+    fn push_history_rejects_non_local_addresses() {
+        let list: Vec<String> = vec!["http://127.0.0.1:3080".to_string()];
+        let h = push_address_history(&list, "http://192.168.1.1:9999");
+        assert_eq!(h, vec!["http://127.0.0.1:3080"], "非本机地址拒绝入历史");
+        let h = push_address_history(&list, "garbage");
+        assert_eq!(h, vec!["http://127.0.0.1:3080"], "非法输入拒绝");
+    }
+
+    #[test]
+    fn history_serde_round_trip() {
+        let dir = std::env::temp_dir().join(format!("dsh-history-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let cfg = ShellConfig {
+            address_history: Some(vec![
+                "http://127.0.0.1:3999".into(),
+                "http://127.0.0.1:3080".into(),
+            ]),
+            ..Default::default()
+        };
+        cfg.save_to(&path).unwrap();
+        let back = ShellConfig::load_from(&path);
+        assert_eq!(
+            back.address_history,
+            Some(vec![
+                "http://127.0.0.1:3999".into(),
+                "http://127.0.0.1:3080".into()
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn is_local_host_address_accepts_loopback_only() {
+        assert!(is_local_host_address("http://127.0.0.1:3080"));
+        assert!(is_local_host_address("http://localhost:3080"));
+        assert!(is_local_host_address("http://127.0.0.1:9999/"));
+        assert!(!is_local_host_address("http://192.168.1.1:9999"));
+        assert!(!is_local_host_address("http://example.com:80"));
+        assert!(!is_local_host_address(""));
+    }
+
+    #[test]
+    fn probe_address_online_and_offline() {
+        // 离线端口：空闲高位端口探测应失败（大部分环境；若 CI 恰好占用则跳过——用短超时）
+        let offline = probe_address_reachable(
+            "http://127.0.0.1:57931",
+            std::time::Duration::from_millis(300),
+        );
+        assert!(!offline, "空闲端口应判定不可达");
+        // 非法地址：解析失败 → 不可达（不 panic）
+        assert!(!probe_address_reachable(
+            "not a url",
+            std::time::Duration::from_millis(100)
+        ));
     }
 
     /// 测试用最小 percent 解码（模拟 URLSearchParams.get 语义）
