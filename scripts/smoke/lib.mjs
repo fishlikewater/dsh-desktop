@@ -56,10 +56,27 @@ export async function evalIn(target, expression, timeoutMs = 15000) {
   return result.result?.result?.value;
 }
 
-/** 应用内联脚本执行（壳页上下文） */
+/** 应用内联脚本执行（壳页上下文）。
+ * 多窗口场景下 CDP target 列表顺序不可靠（会话窗口与主窗口 URL 相同，
+ * 且隐藏会话窗口不响应 evaluate）——遍历所有 page target，逐个探测
+ * `getCurrentWindow().label`，确定是主窗口（main）才执行表达式。 */
 export async function evalShell(expression) {
-  const target = await findTarget("page", "index.html");
-  return evalIn(target, expression);
+  const list = await (await fetch(CDP, { headers: { connection: "close" } })).json();
+  const pages = list.filter((t) => t.type === "page" && t.url.includes("index.html"));
+  let lastErr = null;
+  for (const t of pages) {
+    try {
+      const label = await evalIn(t, `window.__TAURI__.window.getCurrentWindow().label`, 3000);
+      if (label === "main") {
+        return await evalIn(t, expression);
+      }
+      // 会话窗口：跳过（其几何/状态与主窗口不同，且不响应时超时兜底）
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  throw new Error("主窗口 target 未找到（CDP 列表无 index.html page）");
 }
 
 /**
