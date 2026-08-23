@@ -92,6 +92,23 @@ node scripts/bench/baseline.mjs [exe路径] [采样秒数] [间隔ms]
 
 图标资源为 32x32 白描边圆点（深浅系统主题均可见），路径 `src-tauri/icons/tray-{on,off}.png`（编译期内嵌 `include_bytes!`）。
 
+## Linux 支持评估结论（Task 20）
+
+**Linux 服务自管理：不承诺完整支持（仅评估）。** 依据：
+
+1. **启动语义冲突**：Windows/macOS 由壳层 spawn 持有 pid；Linux 桌面惯例是 systemd user service（`systemctl --user start dsh`）——SERVICE_PID 模型与 systemd 托管冲突；
+2. **自动重启不适用**：`Restart=on-failure`（systemd）与壳层 Task 9 节流机制重复冲突；
+3. **探测缺失**：`find_dsh`/`find_dsh_macos` 仅 windows/macos cfg，Linux 无 PATH 探测实现；
+4. **连接语义可用**：壳层 tick 检测、覆盖层、地址切换、托盘、多会话等全部功能在 Linux 正常（连接 127.0.0.1:3080 即可）；仅"壳层拉起/停止"为 stub（可读错误引导手动启动或 systemd user service）。
+
+**结论**：Linux 上以 systemd user unit 或手动启动为准；壳层服务自管理（拉起/停止）不实现，stub 错误文案已指导。
+
+## 评估类结论汇总
+
+- **dsh sidecar（Task 15）**：放弃捆绑（npm shim 无独立可执行产物 + node 运行时无来源）→ 纯安装引导；
+- **dsh:// 深链接（Task 19）**：不实施（无依赖无 GUI 路由，仅唤起价值被快捷键覆盖）；
+- **Linux 服务自管理（Task 20）**：不实施（systemd 语义冲突 + 连接语义已满足）。
+
 ## dsh:// 深链接评估结论（Task 19）
 
 **不实施 dsh:// 协议注册。** 依据：

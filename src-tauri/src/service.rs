@@ -490,9 +490,15 @@ fn reap(child: Option<std::process::Child>) {
 }
 
 /// 其他 Unix（如 Linux）：服务自管理未实现（stub，不扩功能）。
+/// 评估结论（Task 20）：Linux 不承诺壳层拉起/停止服务——
+/// 1) systemd user service（`systemctl --user start dsh`）是桌面惯例，
+///    spawn 持有 pid 的模型与 systemd 托管冲突（自动重启 Restart=on-failure
+///    与 Task 9 节流重复）；2) find_dsh 探测仅 windows/macos 实现；
+/// 3) 壳层连接语义（tick 检测/覆盖层/地址切换/托盘）在 Linux 完全可用，
+///    用户以 systemd 或手动启动服务后即正常。stub 保持可读错误引导手动启动。
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn start_service() -> Result<u32, String> {
-    Err("当前平台暂不支持从壳层拉起 DSH 服务（请手动启动 dsh）".into())
+    Err("当前平台暂不支持从壳层拉起 DSH 服务（请手动启动 dsh，或配置 systemd user service）".into())
 }
 
 /// 停止**本应用拉起的** DSH 服务进程树（taskkill /T /F）。
