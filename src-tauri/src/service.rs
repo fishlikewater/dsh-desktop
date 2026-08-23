@@ -45,6 +45,50 @@ fn service_pid() -> &'static Mutex<Option<u32>> {
     SERVICE_PID.get_or_init(|| Mutex::new(None))
 }
 
+// ===== 服务崩溃自动重启节流（Task 9）=====
+// 前端 tick 离线分支按 2s 轮询触发自动拉起；若服务起不来，无限 spawn 会
+// 轰炸进程。节流窗口期内重复自动调用直接 Ok(0)（不重复 spawn），
+// 手动入口 start_service 不受限（用户主动点击立即生效）。
+
+/// 自动重启节流窗口（10s：覆盖离线 2s 轮询的多次触发，窗口过后可再试）
+pub const AUTO_RESTART_THROTTLE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 上次自动拉起时刻（节流裁决依据；平台无关）
+static LAST_AUTO_START: OnceLock<Mutex<Option<std::time::Instant>>> = OnceLock::new();
+
+fn last_auto_start() -> &'static Mutex<Option<std::time::Instant>> {
+    LAST_AUTO_START.get_or_init(|| Mutex::new(None))
+}
+
+/// 节流判定（纯函数，便于单测）：上次拉起距今 < 窗口 → 应节流。
+pub fn should_throttle_auto_start(
+    last: Option<std::time::Instant>,
+    now: std::time::Instant,
+    window: std::time::Duration,
+) -> bool {
+    last.map(|t| now.duration_since(t) < window)
+        .unwrap_or(false)
+}
+
+/// 自动拉起 DSH 服务（节流包装，平台无关）：
+/// - 节流窗口内 → Ok(0)（不重复 spawn，等待窗口过后再试）；
+/// - 窗口外 → 交给平台 start_service，成功后记录时刻。
+/// 失败不记录时刻（下轮可立即重试）；手动路径 start_service 不受影响。
+#[tauri::command]
+pub fn auto_start_service() -> Result<u32, String> {
+    let mut last = last_auto_start().lock().unwrap();
+    let now = std::time::Instant::now();
+    if should_throttle_auto_start(*last, now, AUTO_RESTART_THROTTLE) {
+        log::debug!(target: "service", "自动重启被节流（10s 窗口内）");
+        return Ok(0);
+    }
+    let result = start_service();
+    if result.is_ok() {
+        *last = Some(now);
+    }
+    result
+}
+
 /// 在 PATH 中查找 dsh CLI（优先 .cmd > .exe > .ps1；DSH_CLI 环境变量可显式指定）。
 /// 纯函数（path 可注入），便于手工/集成验证。
 #[cfg(target_os = "windows")]
@@ -482,11 +526,59 @@ fn spawn_dsh(dsh: &Path) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     // ===== 平台无关纯函数测试（全平台可跑，含 CI windows-gnu） =====
-    use super::{dsh_command_parts, find_dsh_in_with, resolve_dsh_cli_with};
+    use super::{
+        dsh_command_parts, find_dsh_in_with, resolve_dsh_cli_with, should_throttle_auto_start,
+    };
     use std::path::PathBuf;
+    use std::time::{Duration, Instant};
 
     fn p(s: &str) -> PathBuf {
         PathBuf::from(s)
+    }
+
+    // ===== 自动重启节流（Task 9）=====
+
+    #[test]
+    fn throttle_blocks_within_window() {
+        let now = Instant::now();
+        let last = Some(now - Duration::from_secs(2)); // 2s 前拉过
+        assert!(should_throttle_auto_start(
+            last,
+            now,
+            Duration::from_secs(10)
+        ));
+    }
+
+    #[test]
+    fn throttle_allows_after_window() {
+        let now = Instant::now();
+        let last = Some(now - Duration::from_secs(11)); // 11s 前拉过
+        assert!(!should_throttle_auto_start(
+            last,
+            now,
+            Duration::from_secs(10)
+        ));
+    }
+
+    #[test]
+    fn throttle_allows_when_never_started() {
+        let now = Instant::now();
+        assert!(!should_throttle_auto_start(
+            None,
+            now,
+            Duration::from_secs(10)
+        ));
+    }
+
+    #[test]
+    fn throttle_boundary_exact_window_allows() {
+        let now = Instant::now();
+        let last = Some(now - Duration::from_secs(10)); // 恰好在窗口边界
+        assert!(!should_throttle_auto_start(
+            last,
+            now,
+            Duration::from_secs(10)
+        ));
     }
 
     /// 候选顺序：目录顺序优先（外层），目录内按候选顺序（.cmd > .exe > .ps1）。
@@ -646,7 +738,13 @@ mod tests {
         std::env::set_var("DSH_CLI", &script);
         std::env::set_var("DSH_URL", "http://127.0.0.1:1"); // 空闲端口，避免交互真实服务
 
-        let pid = super::start_service().expect("start_service 应成功拉起假 dsh");
+        let pid = super::auto_start_service().expect("auto_start 首次（窗口外）应拉起假 dsh");
+        // 自动重启节流：窗口期内连续调用不重复 spawn（marker 仍只写一次）
+        let second = super::auto_start_service().expect("auto_start 第二次应 Ok(0)（节流）");
+        assert_eq!(
+            second, 0,
+            "节流窗口内第二次自动拉起应返回 Ok(0) 不重复 spawn"
+        );
         let mut args = String::new();
         for _ in 0..200 {
             if let Ok(s) = std::fs::read_to_string(&marker) {

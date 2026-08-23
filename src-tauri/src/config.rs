@@ -60,6 +60,10 @@ pub struct ShellConfig {
     /// 首次关闭引导通知已发过（仅一次，跨会话持久）
     #[serde(default)]
     pub first_close_notified: bool,
+    /// 服务崩溃后自动重新拉起（默认关闭；开启后前端离线分支自动调用
+    /// service::auto_start_service，节流在 service.rs 侧）
+    #[serde(default)]
+    pub auto_restart_enabled: bool,
 }
 
 impl ShellConfig {
@@ -263,6 +267,21 @@ pub fn first_close_notified() -> bool {
 pub fn mark_first_close_notified() -> Result<(), String> {
     update_config(|cfg| {
         cfg.first_close_notified = true;
+    })
+}
+
+/// 读取「服务崩溃后自动重新拉起」开关（默认关闭）。
+/// 直接读最新落盘值：设置弹层切换后 tick 离线分支立即可见（不依赖进程内缓存）。
+#[tauri::command]
+pub fn get_auto_restart() -> bool {
+    ShellConfig::load_from(&shell_config_path()).auto_restart_enabled
+}
+
+/// 设置「服务崩溃后自动重新拉起」开关（即时生效 + 落盘）。
+#[tauri::command]
+pub fn set_auto_restart(enabled: bool) -> Result<(), String> {
+    update_config(|cfg| {
+        cfg.auto_restart_enabled = enabled;
     })
 }
 

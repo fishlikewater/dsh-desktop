@@ -54,7 +54,10 @@ pub fn run() {
             config::load_window_state,
             config::save_window_state,
             config::get_close_behavior,
-            config::set_close_behavior
+            config::set_close_behavior,
+            config::get_auto_restart,
+            config::set_auto_restart,
+            service::auto_start_service
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
