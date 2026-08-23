@@ -17,12 +17,24 @@ async function sample() {
 }
 
 // 等待窗口可见且位置稳定（最多 20s）
+// 注意：CDP 就绪 ≠ 壳页 JS 已加载（__TAURI__ 注入有延迟），采样抛异常时
+// （__TAURI__/window 未就绪）视为"未稳定"，等待下一轮重试。
 let stable = null;
 for (let i = 0; i < 40; i++) {
-  const a = await sample();
+  let a = null;
+  try {
+    a = await sample();
+  } catch (e) {
+    // 壳页尚未就绪（__TAURI__ 未注入），等待重试
+  }
   await wait(500);
-  const b = await sample();
-  if (a.pos.x === b.pos.x && a.pos.y === b.pos.y && b.size.w > 500) {
+  let b = null;
+  try {
+    b = await sample();
+  } catch (e) {
+    // 同上
+  }
+  if (a && b && a.pos.x === b.pos.x && a.pos.y === b.pos.y && b.size.w > 500) {
     stable = b;
     break;
   }
