@@ -24,9 +24,16 @@ check("open_session_window 返回 label", typeof label === "string" && /^session
 // 2) 等待 CDP 出现第二个 page target（index.html 壳页）
 let targets = [];
 for (let i = 0; i < 20; i++) {
-  const list = await (await fetch("http://127.0.0.1:9226/json", { headers: { connection: "close" } })).json();
-  targets = list.filter((t) => t.type === "page" && t.url.includes("index.html"));
-  if (targets.length >= 2) break;
+  try {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 3000);
+    const list = await (await fetch("http://127.0.0.1:9226/json", { headers: { connection: "close" }, signal: ac.signal })).json();
+    clearTimeout(to);
+    targets = list.filter((t) => t.type === "page" && t.url.includes("index.html"));
+    if (targets.length >= 2) break;
+  } catch (e) {
+    /* CDP 瞬时不可达：重试 */
+  }
   await wait(500);
 }
 check("CDP 出现两个壳页 target", targets.length >= 2, `count=${targets.length}`);
@@ -54,6 +61,20 @@ if (sessionLabels.length >= 1) {
     return url;
   })()`);
   check("会话窗口壳页独立可用", v === "shell-ok", `v=${v}`);
+}
+
+// 5) 清理：关闭会话窗口（触发 CloseRequested → 销毁），恢复单窗口状态，
+//    保证后续场景 findTarget 顺序稳定
+if (sessionLabels.length >= 1) {
+  const idx = labels.indexOf(label);
+  const t = targets[idx >= 0 ? idx : 1];
+  try {
+    await evalIn(t, `window.__TAURI__.window.getCurrentWindow().close()`, 8000);
+    await wait(1000); // 等窗口销毁
+    console.log("会话窗口已关闭（场景清理）");
+  } catch (e) {
+    console.log(`WARN: 会话窗口关闭失败（不影响主断言结果）: ${String(e).slice(0, 80)}`);
+  }
 }
 
 console.log(ok ? "PASS: 多会话窗口（独立 target + label 区分）" : "FAIL");

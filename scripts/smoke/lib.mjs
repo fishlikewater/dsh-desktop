@@ -28,14 +28,20 @@ export async function findTarget(type, urlKeyword, timeoutMs = 30000) {
   throw new Error(`CDP target 未找到（type=${type}, url~=${urlKeyword}）——确认应用已启动且为 debug 构建`);
 }
 
-/** 在 target 上求值（awaitPromise 支持 async 表达式） */
-export async function evalIn(target, expression) {
+/** 在 target 上求值（awaitPromise 支持 async 表达式）。
+ * 两阶段均带超时：打开的 WebSocket 或永不响应的页面不应挂死冒烟流程。 */
+export async function evalIn(target, expression, timeoutMs = 15000) {
   const ws = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((res, rej) => { ws.on("open", res); ws.on("error", rej); });
-  const result = await new Promise((res) => {
+  await new Promise((res, rej) => {
+    const t = setTimeout(() => { ws.terminate(); rej(new Error(`evalIn 打开超时（${timeoutMs}ms）`)); }, timeoutMs);
+    ws.on("open", () => { clearTimeout(t); res(); });
+    ws.on("error", (e) => { clearTimeout(t); rej(e); });
+  });
+  const result = await new Promise((res, rej) => {
+    const t = setTimeout(() => { ws.terminate(); rej(new Error(`evalIn 响应超时（${timeoutMs}ms，target ${target.url}）`)); }, timeoutMs);
     ws.on("message", (data) => {
       const msg = JSON.parse(data.toString());
-      if (msg.id === 1) res(msg);
+      if (msg.id === 1) { clearTimeout(t); res(msg); }
     });
     ws.send(JSON.stringify({
       id: 1,
