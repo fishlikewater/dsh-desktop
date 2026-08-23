@@ -131,6 +131,30 @@ pub fn open_session_window(app: tauri::AppHandle, url: Option<String>) -> Result
         .map_err(|e| format!("创建会话窗口失败: {e}"))
 }
 
+/// 列出全部会话窗口 label（冒烟断言/托盘重建同源逻辑）。
+#[tauri::command]
+pub fn list_session_windows(app: tauri::AppHandle) -> Vec<String> {
+    app.webview_windows()
+        .keys()
+        .filter(|l| l.as_str() != crate::config::MAIN_WINDOW)
+        .cloned()
+        .collect()
+}
+
+/// 关闭指定会话窗口（冒烟清理/托盘「关闭会话」）。
+#[tauri::command]
+pub fn close_session_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    if label == crate::config::MAIN_WINDOW {
+        return Err("不能关闭主窗口".into());
+    }
+    let Some(w) = app.get_webview_window(&label) else {
+        return Err(format!("会话窗口不存在: {label}"));
+    };
+    crate::tray::on_session_window_closed(&app, &label);
+    let _ = w.destroy();
+    Ok(())
+}
+
 /// 共享窗口工厂：主窗口/会话窗口均经此创建（样式、隐藏、CDP 等一致）。
 /// `remember_state`：主窗口参与窗口状态记忆（load/save_window_state 按
 /// label 分域，见 config.rs）；会话窗口不参与（打开即居中）。

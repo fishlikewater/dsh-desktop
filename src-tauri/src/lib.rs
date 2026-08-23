@@ -62,6 +62,8 @@ pub fn run() {
             config::probe_address,
             window::clamp_rect,
             window::open_session_window,
+            window::list_session_windows,
+            window::close_session_window,
             tray::set_tray_state,
             service::auto_start_service
         ])
