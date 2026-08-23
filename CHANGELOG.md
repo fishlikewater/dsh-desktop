@@ -2,6 +2,31 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.6] - 2026-08-23
+
+### Added
+
+- **多会话窗口**：托盘「新建会话…」打开独立会话窗口（独立检测服务、可分别切地址），托盘菜单动态列出会话项并可唤起/关闭；窗口状态记忆按 label 分域（主窗口记忆，会话窗口居中）；会话窗口独立关闭语义
+- **全局快捷键可配置**：设置页可修改唤起主窗口的快捷键（默认 Windows Ctrl+Shift+D / macOS Cmd+Shift+D，支持 ctrl/cmd/alt/shift + a-z/0-9/f1-f12），修改即时生效；注册失败仅告警
+- **应用内日志查看器**：设置页「查看」内嵌读尾面板（末 500 行，等宽可滚动，刷新/空态/错误态），「打开目录」保留
+- **About 弹层**：展示壳版本 + DSH CLI 版本（`dsh --version` 探测，未安装可读提示）+ 服务地址
+- **服务地址可编辑 + 历史切换**：地址行下拉 + 输入 + 切换（TCP 探测可达性，非本机地址 UI 提示告知限制），历史最新在前、上限 5 条
+- **DPI/显示器适配**：跨屏缩放/热插拔时窗口尺寸与位置夹取到工作区（clamp_rect + 缩放监听兜底）
+- **托盘状态图标**：托盘图标区分服务在线/离线（白描边圆点双态，随壳页检测同步）
+- **覆盖层增强**：安装指引折叠块（npm 安装 + DSH_CLI 说明）、「打开设置」入口、页面加载进度条（15s 黑洞期顶部细条，每秒更新）
+- **代码签名/公证前置工程**：release.yml 条件化 Windows signtool 签名 + macOS notarytool 公证步骤与自动验证门禁（signtool verify /pa、codesign --verify + spctl --assess），secrets 注入即启用（启用手册见 docs/release-process.md）
+
+### Fixed
+
+- **package.json 版本漂移**：同步至与 tauri.conf.json / Cargo.toml / CHANGELOG 一致（0.1.6），并纳入版本一致性门禁（check-version.mjs 检查四处）
+- **会话窗口创建死锁**：窗口创建/销毁移出 IPC 同步命令线程（spawn 异步执行），避免 Windows 上与主线程互等导致的命令超时
+
+### 工程
+
+- 冒烟测试扩展至 8 场景（多会话窗口场景排最后，断言走 Rust 命令 + CDP 列表计数；evalShell 逐 target 探测主窗口，evalIn 两阶段超时兜底）
+- 单元测试 70 → 80 例（快捷键解析 5 例、日志读尾 5 例）
+- 评估结论记录：dsh sidecar 放弃捆绑（npm shim 无独立可执行产物）、dsh:// 深链接不实施（GUI 无路由）、Linux 服务自管理不实施（systemd 语义冲突）——详见 docs/testing.md
+
 ## [0.1.5] - 2026-08-22
 
 > 首个正式发布的 macOS 完整适配版本：v0.1.4 构建为发布草稿、未对外发布，其全部内容并入本版（详见 [0.1.4]）。

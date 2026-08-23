@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "DSH 桌面壳：把 DeepSeek Harness Web GUI 包装为 Windows 桌面应用",
   "type": "module",
   "scripts": {
