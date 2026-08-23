@@ -60,7 +60,7 @@ export async function evalIn(target, expression, timeoutMs = 15000) {
  * 多窗口场景下 CDP target 列表顺序不可靠（会话窗口与主窗口 URL 相同，
  * 且隐藏会话窗口不响应 evaluate）——遍历所有 page target，逐个探测
  * `getCurrentWindow().label`，确定是主窗口（main）才执行表达式。 */
-export async function evalShell(expression) {
+export async function evalShell(expression, timeoutMs = 15000) {
   const list = await (await fetch(CDP, { headers: { connection: "close" } })).json();
   const pages = list.filter((t) => t.type === "page" && t.url.includes("index.html"));
   let lastErr = null;
@@ -68,7 +68,7 @@ export async function evalShell(expression) {
     try {
       const label = await evalIn(t, `window.__TAURI__.window.getCurrentWindow().label`, 3000);
       if (label === "main") {
-        return await evalIn(t, expression);
+        return await evalIn(t, expression, timeoutMs);
       }
       // 会话窗口：跳过（其几何/状态与主窗口不同，且不响应时超时兜底）
     } catch (e) {

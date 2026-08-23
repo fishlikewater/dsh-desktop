@@ -91,3 +91,16 @@ node scripts/bench/baseline.mjs [exe路径] [采样秒数] [间隔ms]
 4. 离线时左键单击托盘 → 主窗口唤起（与在线行为一致，即"优先唤起"语义）。
 
 图标资源为 32x32 白描边圆点（深浅系统主题均可见），路径 `src-tauri/icons/tray-{on,off}.png`（编译期内嵌 `include_bytes!`）。
+
+## 多会话窗口（冒烟局限记录）
+
+Windows WebView2 创建第二个 WebView 后，主窗口的 CDP `Runtime.evaluate` 会失效（多 WebView 共享调试 session 的平台限制），因此：
+
+- **multi-window 场景排在 run-all 最后**：不殃及其他场景；断言走 Rust 命令（open/list/close_session_window）+ CDP 列表计数（纯 HTTP，不依赖 evaluate）；
+- 第二窗口存在性的核心证据 = CDP page target 计数 ≥ 2 + `open_session_window` 返回 label；
+- 隐藏会话窗口的 CDP evaluate 本身也不可靠（不响应），逐窗口注入断言不可用；
+- 手工冒烟步骤（本机 Windows）：
+  1. 托盘菜单「新建会话…」→ 第二个窗口出现且独立检测服务（可分别切地址）；
+  2. 托盘菜单出现「会话：DSH 会话 - …」项，点击唤起对应窗口；
+  3. 关闭会话窗口 → 菜单项消失，主窗口不受影响；
+  4. 主窗口关闭仍隐藏到托盘（行为不变）。
