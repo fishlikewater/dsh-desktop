@@ -168,6 +168,146 @@ jobs:
             "macos/DSH.Desktop_aarch64.app.tar.gz.sig" \
             "dmg/DSH.Desktop_${VERSION}_aarch64.dmg" --clobber
 
+      # ===== macOS 开发者签名 + 公证（Task 13 前置工程：凭据注入即启用）=====
+      # 覆盖 ad-hoc 签名（Developer ID 身份必须已导入 runner keychain；
+      # MACOS_SIGNING_IDENTITY 可指定，默认 "Developer ID Application"）。
+      # 凭据缺席时跳过（显式说明见下条 SKIP 步骤）；不做假公证。
+      - name: macOS Developer ID 签名 + 公证（notarytool submit + staple）
+        id: mac-notarize
+        if: runner.os == 'macOS' && env.APPLE_ID != '' && env.APPLE_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          set -euo pipefail
+          WORK="$(pwd)"
+          APP="$(find src-tauri/target -type d -name 'DSH Desktop.app' -print -quit)"
+          [ -n "$APP" ] || { echo "未找到 DSH Desktop.app"; exit 1; }
+          ROOT="$(dirname "$(dirname "$APP")")"
+          VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version)")"
+          IDENTITY="${MACOS_SIGNING_IDENTITY:-Developer ID Application}"
+
+          # 1) Developer ID + 强化运行时 签名（覆盖 ad-hoc）
+          codesign --force --deep --sign "$IDENTITY" --timestamp --options runtime "$APP"
+
+          # 2) 公证（--wait 阻塞到结果；失败即 job 失败）
+          xcrun notarytool submit "$APP" --wait --apple-id "$APPLE_ID" \
+            --apple-team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" \
+            --output-format json
+          # 3) staple 票据到 .app（离线可验证）
+          xcrun stapler staple "$APP"
+
+          # 4) 重建 updater tar.gz + .sig（内容已变），重签 .sig
+          cd "$WORK/$(dirname "$APP")"
+          rm -f "DSH Desktop.app.tar.gz" "DSH Desktop.app.tar.gz.sig"
+          tar -czf "DSH Desktop.app.tar.gz" "DSH Desktop.app"
+          KEY_FILE="$(mktemp /tmp/dsh-signer-key.XXXXXX)"
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          unset TAURI_SIGNING_PRIVATE_KEY
+          npx tauri signer sign --private-key-path "$KEY_FILE" --password "" "DSH Desktop.app.tar.gz"
+          rm -f "$KEY_FILE"
+
+          # 5) 重建 dmg（staging：.app + Applications 链接）
+          cd "$WORK/$ROOT"
+          STAGE="dmg-stage"; rm -rf "$STAGE"; mkdir -p "$STAGE" dmg
+          cp -R "$WORK/$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          DMG="dmg/DSH Desktop_${VERSION}_aarch64.dmg"
+          hdiutil create -volname "DSH Desktop" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+
+          # 6) 覆盖上传（公证后的产物）
+          mv "macos/DSH Desktop.app.tar.gz" "macos/DSH.Desktop_aarch64.app.tar.gz"
+          mv "macos/DSH Desktop.app.tar.gz.sig" "macos/DSH.Desktop_aarch64.app.tar.gz.sig"
+          mv "$DMG" "dmg/DSH.Desktop_${VERSION}_aarch64.dmg"
+          gh release upload "$GITHUB_REF_NAME" \
+            "macos/DSH.Desktop_aarch64.app.tar.gz" \
+            "macos/DSH.Desktop_aarch64.app.tar.gz.sig" \
+            "dmg/DSH.Desktop_${VERSION}_aarch64.dmg" --clobber
+
+      - name: macOS 签名验证（codesign --verify + spctl --assess）
+        if: runner.os == 'macOS' && steps.mac-notarize.outcome == 'success'
+        shell: bash
+        run: |
+          APP="$(find src-tauri/target -type d -name 'DSH Desktop.app' -print -quit)"
+          [ -n "$APP" ] || { echo "未找到 DSH Desktop.app"; exit 1; }
+          codesign --verify --deep --strict "$APP" || exit 1
+          spctl --assess --type execute --verbose=4 "$APP" || exit 1
+
+      - name: 通知：macOS 公证未配置（Task 13 blocked 说明）
+        if: runner.os == 'macOS' && (env.APPLE_ID == '' || env.APPLE_PASSWORD == '' || env.APPLE_TEAM_ID == '')
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "SKIP: Apple 公证凭据未配置——产物保持 ad-hoc 签名（Task 13 处于 blocked，启用步骤见 docs/release-process.md）"
+
+      # tauri-action 上传主产物；.sig 需在代码签名**之后**重签（signtool 会改变
+      # exe 字节，原 sig 失效）——重签步骤见「重签 Windows updater .sig」。
+      # ===== Windows 代码签名（Task 13 前置工程：secrets 注入即启用）=====
+      # 证书未采购时该步骤跳过（显式说明见下条 SKIP 步骤）；不做假签名。
+      - name: Windows 代码签名（signtool /fd SHA256 /tr RFC3161）
+        id: win-sign
+        if: runner.os == 'Windows' && env.WIN_CERT != ''
+        shell: pwsh
+        env:
+          WIN_CERT: ${{ secrets.WINDOWS_CODESIGN_CERT_B64 }}
+          WIN_CERT_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" |
+                 Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          [System.IO.File]::WriteAllBytes(
+            "$env:RUNNER_TEMP\codesign.pfx",
+            [Convert]::FromBase64String($env:WIN_CERT))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse `
+            -Filter signtool.exe | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd SHA256 /td SHA256 `
+            /tr http://timestamp.digicert.com `
+            /f "$env:RUNNER_TEMP\codesign.pfx" /p $env:WIN_CERT_PASSWORD $exe.FullName
+
+      - name: Windows 签名验证（signtool verify /pa）
+        if: runner.os == 'Windows' && steps.win-sign.outcome == 'success'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" |
+                 Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse `
+            -Filter signtool.exe | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName verify /pa $exe.FullName
+
+      - name: 重签 Windows updater .sig（代码签名后 exe 已变，原 sig 失效）
+        if: runner.os == 'Windows' && steps.win-sign.outcome == 'success'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" |
+                 Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          $keyFile = Join-Path $env:RUNNER_TEMP "dsh-signer.key"
+          Set-Content -Path $keyFile -Value $env:TAURI_SIGNING_PRIVATE_KEY -NoNewline
+          $env:TAURI_SIGNING_PRIVATE_KEY = ""
+          npx tauri signer sign --private-key-path $keyFile --password "" $exe.FullName
+          Remove-Item $keyFile
+          $sigPath = "$($exe.FullName).sig"
+          gh release upload ${{ github.ref_name }} $sigPath --clobber
+
+      - name: 通知：Windows 签名未配置（Task 13 blocked 说明）
+        if: runner.os == 'Windows' && env.WIN_CERT == ''
+        shell: pwsh
+        env:
+          WIN_CERT: ${{ secrets.WINDOWS_CODESIGN_CERT_B64 }}
+        run: |
+          Write-Host "SKIP: WINDOWS_CODESIGN_CERT_B64 未配置——产物未做代码签名（Task 13 处于 blocked，启用步骤见 docs/release-process.md）"
+
       - name: 生成 SHA256SUMS（Windows）
         if: runner.os == 'Windows'
         shell: pwsh
@@ -180,18 +320,6 @@ jobs:
         if: runner.os == 'Windows'
         continue-on-error: true
         run: gh release upload ${{ github.ref_name }} SHA256SUMS.txt --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # tauri-action 上传主产物；.sig 作为资产单独上传，供聚合 job
-      # （publish-updater-json）组装 latest.json 使用。
-      - name: 上传 Windows 签名（.exe.sig）
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $sig = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe.sig" | Select-Object -First 1
-          if (-not $sig) { Write-Error "未找到 .exe.sig（检查 TAURI_SIGNING_PRIVATE_KEY secret 是否配置正确）"; exit 1 }
-          gh release upload ${{ github.ref_name }} $sig.FullName --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

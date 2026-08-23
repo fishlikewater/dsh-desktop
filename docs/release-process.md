@@ -46,7 +46,33 @@ Get-FileHash .\dsh-desktop-setup.exe -Algorithm SHA256 | Format-List
 
 - updater 签名公钥内置于 `src-tauri/tauri.conf.json`（`plugins.updater.pubkey`），发布版不可更换。
 - 私钥位于本地 `.tauri/dsh-desktop.key`，**禁止提交仓库**（.gitignore 已排除）；CI 通过 secret `TAURI_SIGNING_PRIVATE_KEY` 注入（Windows 构建 + 聚合 job 必需；macOS ad-hoc 签名同样注入用于重签 .sig）。
-- macOS 当前为 ad-hoc 签名（无开发者证书，`codesign -`），Gatekeeper 不会完全放行；开发者证书公证已列入后续优化方向，完成后本流程补 notarization 步骤。
+- macOS 当前为 ad-hoc 签名（无开发者证书，`codesign -`），Gatekeeper 不会完全放行；开发者证书公证步骤已就绪（见下），凭据注入即启用。
+
+## 代码签名与公证（Task 13）
+
+> 状态：**前置工程已就绪，证书未采购 → blocked**。release.yml 已含条件化签名/公证步骤与自动验证门禁（secrets 缺席时跳过并输出 SKIP 说明，不产生假签名产物）。以下为证书到位后的启用手册。
+
+### 需要的 secrets（GitHub → Settings → Secrets and variables → Actions）
+
+| secret | 用途 | 获取路径 |
+|---|---|---|
+| `WINDOWS_CODESIGN_CERT_B64` | Windows 代码签名证书（.pfx 的 base64） | EV/OV 代码签名证书（如 DigiCert/GlobalSign），导出 pfx 后 `base64 -i cert.pfx` |
+| `WINDOWS_CODESIGN_PASSWORD` | pfx 私钥口令 | 导出 pfx 时设置 |
+| `APPLE_ID` | Apple 开发者账号邮箱 | developer.apple.com |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App Store Connect 专用密码（**非**账号密码） | appleid.apple.com → 登录与安全 → App 专用密码 |
+| `APPLE_TEAM_ID` | Team ID（10 位） | developer.apple.com → Membership 详情 |
+| `MACOS_SIGNING_IDENTITY`（可选） | Developer ID Application 证书 identity，默认 `Developer ID Application` | Keychain 中证书通用名 |
+
+### 启用后自动执行的验证门禁（失败即发布失败）
+
+- **Windows**：`signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com`（RFC3161 时间戳）→ `signtool verify /pa` → 重签 updater `.exe.sig`（signtool 改变 exe 字节，原 sig 失效）→ SHA256SUMS（签名后哈希）。
+- **macOS**：Developer ID + `--options runtime` 签名（覆盖 ad-hoc）→ `notarytool submit --wait`（Apple 公证）→ `stapler staple`（票据内嵌）→ 重建 updater tar.gz/.sig 与 dmg 并覆盖上传 → `codesign --verify --deep --strict` + `spctl --assess` 验证。
+
+### 注意事项
+
+- macOS 签名身份需能访问 keychain 中的证书（GitHub Actions 可在 runner 上安装证书；也可改用云端签名服务，命令按实际方案适配）。
+- 证书到期/撤销后发布流程自动失败（验证门禁），不会静默产出未签名产物。
+- 启用后 SECURITY.md「已知限制」段的 SmartScreen/Gatekeeper 提示不再适用，发布说明同步更新。
 
 ## 回滚
 

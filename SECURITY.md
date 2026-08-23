@@ -11,10 +11,10 @@ DSH Desktop 是 DeepSeek Harness Web GUI 的桌面壳层。本文档说明其安
 
 ## 已知限制（未签名发布版）
 
-- 发布版**未做代码签名与公证**：
+- 发布版**当前未做代码签名与公证**（证书未采购，Task 13 blocked）：
   - Windows：SmartScreen 可能提示"未知发布者"——选择"更多信息 → 仍要运行"；请从官方发布渠道获取安装包并核对 SHA256 校验和（见发布说明中的 `SHA256SUMS.txt`）。
   - macOS：Apple Silicon 产物为 ad-hoc 签名（`codesign -`，无开发者证书），首次打开可能需右键 → 打开；Gatekeeper 提示属预期行为。
-- 签名与公证在后续优化方向中（代码签名 + macOS 公证），完成后本限制自动消解。
+- 代码签名/公证流程已就绪（release.yml 条件化步骤 + 自动验证门禁），证书与凭据注入 secrets 后自动启用；启用手册见 [docs/release-process.md](docs/release-process.md)「代码签名与公证（Task 13）」。启用后本限制自动消解。
 
 ## 本地数据
 
