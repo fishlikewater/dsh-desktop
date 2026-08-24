@@ -250,6 +250,12 @@ pub fn save_window_state(state: WindowState, label: Option<String>) -> Result<()
     if state.w == 0 || state.h == 0 {
         return Ok(());
     }
+    // 极小几何防御：隐藏期/未布局期采样（如 160x28）远低于最小窗口尺寸
+    // （MIN_WINDOW_SIZE=860x620），落盘后下次启动会恢复出"缩在角落"的窗口。
+    // 阈值取明显小于最小尺寸的值，正常可用的几何不会被误拒。
+    if state.w < 400 || state.h < 300 {
+        return Ok(());
+    }
     cfg.window_state = Some(state);
     cfg.save_to(&path)
         .map_err(|e| format!("保存窗口状态失败（{}）: {e}", path.display()))
@@ -402,8 +408,21 @@ pub fn clamp_window_state(state: WindowState, wa: (i32, i32, u32, u32)) -> Windo
     // 工作区 0x0 防御：先提升到 ≥1（既防尺寸除零，也保证下方位置计算 max ≥ min）
     let wa_w = wa_w.max(1);
     let wa_h = wa_h.max(1);
-    let w = state.w.min(wa_w);
-    let h = state.h.min(wa_h);
+    // 尺寸下限：持久化的几何不得小于最小窗口尺寸（与工作区取小，
+    // 避免小屏幕上强制超出工作区）。w/h 为 0 表示无记忆（默认），
+    // 保持 0 以便前端走"首启居中"分支，不做下限提升。
+    let min_w = MIN_WINDOW_SIZE.0.min(wa_w);
+    let min_h = MIN_WINDOW_SIZE.1.min(wa_h);
+    let w = if state.w > 0 {
+        state.w.clamp(min_w, wa_w)
+    } else {
+        0
+    };
+    let h = if state.h > 0 {
+        state.h.clamp(min_h, wa_h)
+    } else {
+        0
+    };
     // 位置：至少与工作区左/上沿对齐；窗口超出右/下沿时拉回
     // （w ≤ wa_w 保证 wa_w - w ≥ 0，clamp 上下界合法）
     let x = state.x.clamp(wa_x, wa_x + wa_w as i32 - w as i32);
@@ -668,6 +687,48 @@ mod tests {
         };
         let c = clamp_window_state(state, (0, 0, 1280, 840));
         assert!(c.maximized);
+    }
+
+    #[test]
+    fn clamp_raises_tiny_memory_to_min_size() {
+        // 事故回归(2026-08-24)：隐藏期采样 160x28 落盘后，恢复路径必须
+        // 提升到最小窗口尺寸，而不是恢复出"缩在左上角"的窗口。
+        let state = WindowState {
+            x: 0,
+            y: 0,
+            w: 160,
+            h: 28,
+            maximized: false,
+        };
+        let wa = (0, 0, 1920, 1080);
+        let c = clamp_window_state(state, wa);
+        assert_eq!((c.w, c.h), MIN_WINDOW_SIZE, "极小记忆应提升到最小窗口尺寸: {c:?}");
+        // 位置保持在左上角(0,0)即工作区内
+        assert!(c.x >= 0 && c.y >= 0);
+    }
+
+    #[test]
+    fn clamp_keeps_zero_memory_as_zero() {
+        // 无记忆(默认 0x0)：不得被下限提升为 860x620，
+        // 否则前端"无记忆→首启居中"分支会被错误跳过。
+        let state = WindowState::default();
+        let c = clamp_window_state(state, (0, 0, 1920, 1080));
+        assert_eq!((c.w, c.h), (0, 0), "默认状态应保持 0x0");
+    }
+
+    #[test]
+    fn clamp_min_size_capped_by_small_work_area() {
+        // 小屏工作区小于 MIN_WINDOW_SIZE 时，下限取工作区（不能超出）。
+        let state = WindowState {
+            x: 0,
+            y: 0,
+            w: 160,
+            h: 28,
+            maximized: false,
+        };
+        let wa = (0, 0, 800, 500);
+        let c = clamp_window_state(state, wa);
+        assert_eq!((c.w, c.h), (800, 500), "下限不得超过工作区: {c:?}");
     }
 
     // ===== 关闭行为（Task 8）=====
