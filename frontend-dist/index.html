@@ -105,7 +105,25 @@
         letter-spacing: 0.3px;
         white-space: nowrap;
       }
-      #drag-region { flex: 1; height: 100%; }
+      #drag-region {
+        flex: 1;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+      }
+      /* 标题栏状态文本：连接状态 + 服务地址，居中于拖拽区；不拦截拖拽 */
+      #title-status {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 70%;
+        pointer-events: none;
+        letter-spacing: 0.2px;
+      }
       /* ===== 连接状态圆点（服务离线/加载/在线）===== */
       #status-dot {
         width: 8px;
@@ -308,7 +326,7 @@
         white-space: nowrap;
       }
       .settings-card {
-        width: 520px;
+        width: 560px;
         max-width: calc(100% - 48px);
         padding: 28px 28px 24px;
       }
@@ -351,12 +369,12 @@
         padding: 12px 0;
         border-top: 1px solid var(--card-border);
       }
-      .settings-row .label { width: 72px; flex: none; font-size: 13px; color: var(--muted); }
+      .settings-row .label { width: 104px; flex: none; font-size: 13px; color: var(--muted); white-space: nowrap; }
       .settings-row code { font-size: 12px; background: var(--code-bg); padding: 3px 8px; border-radius: 5px; flex: none; max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .settings-row .hint { font-size: 11px; color: var(--muted); flex: 1; min-width: 0; text-align: right; line-height: 1.5; }
+      .settings-row .hint { font-size: 11px; color: var(--muted); flex: 1; min-width: 0; text-align: right; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       /* 服务地址行：说明独立成行，避免与 URL 同排挤压 */
       .settings-row.row-url { flex-wrap: wrap; }
-      .settings-row.row-url .hint { flex-basis: 100%; padding-left: 84px; text-align: left; }
+      .settings-row.row-url .hint { flex-basis: 100%; padding-left: 116px; text-align: left; }
       .settings-row.row-url select,
       .settings-row.row-url input[type="text"] {
         font-size: 12px; padding: 4px 8px; border: 1px solid var(--border);
@@ -430,7 +448,8 @@
       </svg>
       <span id="app-title">DSH Desktop</span>
       <span id="status-dot" class="loading" title="DSH 服务连接状态"></span>
-      <div id="drag-region"></div>
+      <!-- 拖拽区内的服务状态文本：利用标题栏空白，显示连接状态 + 服务地址 -->
+      <div id="drag-region"><span id="title-status">正在检测服务…</span></div>
       <button class="win-btn" id="btn-settings" title="配置" aria-label="配置">
         <svg viewBox="0 0 10 10">
           <circle cx="5" cy="5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.1"/>
@@ -1058,11 +1077,16 @@
 
       // ===== 标题栏连接状态圆点（与 tick 同源：offline/loading/online）=====
       const statusDot = document.getElementById("status-dot");
+      // 标题栏状态文本：与圆点同源（复用 DSH_URL + 三态），让拖拽区空白承载信息
+      const titleStatus = document.getElementById("title-status");
       let lastCheckAt = null; // 最近一次服务检测时刻
       function setStatus(mode) {
         // 三态类名（offline=红 / loading=黄 / online=绿），title 显示 URL + 检测时间
         statusDot.classList.remove("offline", "loading", "online");
         statusDot.classList.add(mode);
+        titleStatus.textContent =
+          (mode === "online" ? "服务在线" : mode === "loading" ? "连接中" : "服务离线") +
+          " · " + DSH_URL;
         const t = lastCheckAt
           ? new Date(lastCheckAt).toLocaleTimeString()
           : "尚未检测";
